@@ -17,6 +17,14 @@
 #include "PID_v1.h"
 #include "PZEM004Tv30.h"
 
+#define CHECK_PERIOD 1000UL
+#define CHECK_PULSE_THRESHOLD 107  // ~ 0.8 m^3 / h
+
+#define INTERRUPT_PIN 2
+#define DS_PIN 4
+#define HEAT_SWITCH_PIN 5
+#define PWM_PIN 6
+
 // EEPROM addresses
 #define KP_ADDR 0x00  // to 0x03 (float)
 #define KI_ADDR 0x04  // to 0x07 (float)
@@ -75,7 +83,7 @@ uint16_t hc_minus5, hc_0, hc_5, hc_10;
 
 Timer timer;
 PZEM004Tv30 pzem(Serial2);
-OneWire ow(4);
+OneWire ow(DS_PIN);
 DallasTemperature ds(&ow);
 
 const uint8_t n_probes = 6;
@@ -91,6 +99,9 @@ uint16_t voltage[n_probes], current[n_probes], power[n_probes], pf[n_probes];
 
 uint16_t pid_output, pid_sv;
 PID pid(&heat_temp_avg, &pid_output, &pid_sv, kp, ki, kd, DIRECT);
+
+uint16_t pulse_counter = 0;
+bool alarm_flag = false;
 
 void printPIDParams() {
   Serial.println("--------- PID --------");
@@ -367,6 +378,11 @@ void setup() {
   Serial.begin(9600);
   Serial.println("================== START ====================");
 
+  pinMode(INTERRUPT_PIN, INPUT_PULLUP);
+  pinMode(HEAT_SWITCH_PIN, OUTPUT);
+  digitalWrite(HEAT_SWITCH_PIN, LOW);
+  attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), onPulse, FALLING);
+
   // ====== Heating curve ======
   EEPROM.get(HC_MINUS5_ADDR, hc_minus5);
   EEPROM.get(HC_0_ADDR, hc_0);
@@ -416,6 +432,7 @@ void setup() {
   // --- timers ---
   timer.every(1000, on1Sec);
   timer.every(10000, on10Sec);
+  timer.every(1000, flowAlarmCheck);
 }
 
 void loop() {
@@ -438,6 +455,16 @@ void loop() {
       buf_index++;
     }
   }
+
+  if(alarm_flag) {
+    digitalWrite(HEAT_SWITCH_PIN, HIGH);
+    digitalWrite(LED_BUILTIN, HIGH);
+  }
+}
+
+void onPulse() {
+  pulse_counter++;
+  //Serial.println("pulse");
 }
 
 uint8_t i = 0;
@@ -458,6 +485,19 @@ void on10Sec() {
   Serial.println("====== ON 10 sec ======");
   avgCalcAll();
   pid_sv = getHCValue(outside_temp_avg);
+  digitalWrite(PWM_PIN, pid_sv);
   showValues();
   Serial.println("=======================");
+}
+
+void flowAlarmCheck() {
+  //char str_buf[3];
+  //itoa(pulse_counter, str_buf, 10);
+  //Serial.println(str_buf);
+  if(pulse_counter < CHECK_PULSE_THRESHOLD) {
+    alarm_flag = true;
+    Serial.println(String(pulse_counter) + " is below " + String(CHECK_PULSE_THRESHOLD));
+    Serial.println("rise ALARM!");
+  }
+  pulse_counter = 0;
 }
