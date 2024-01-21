@@ -78,7 +78,7 @@ const uint8_t ds_precision=12;
 
 float kp, ki, kd;
 uint8_t heat_ds[8], return_ds[8], outside_ds[8];
-uint16_t pid_min, pid_max;
+uint8_t pid_min, pid_max;
 uint16_t hc_minus5, hc_0, hc_5, hc_10;
 
 Timer timer;
@@ -496,8 +496,8 @@ void flowAlarmCheck() {
   //Serial.println(str_buf);
   if(pulse_counter < CHECK_PULSE_THRESHOLD) {
     alarm_flag = true;
-    Serial.println(String(pulse_counter) + " is below " + String(CHECK_PULSE_THRESHOLD));
-    Serial.println("rise ALARM!");
+    //Serial.println(String(pulse_counter) + " is below " + String(CHECK_PULSE_THRESHOLD));
+    //Serial.println("rise ALARM!");
   }
   pulse_counter = 0;
 }
