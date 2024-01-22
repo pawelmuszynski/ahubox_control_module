@@ -24,6 +24,8 @@
 #define DS_PIN 4
 #define HEAT_SWITCH_PIN 5
 #define PWM_PIN 6
+#define DEFROST_IN_PIN 7
+#define ALARM_IN_PIN 8
 
 // EEPROM addresses
 #define KP_ADDR 0x00  // to 0x03 (float)
@@ -101,24 +103,37 @@ uint16_t pid_output, pid_sv;
 PID pid(&heat_temp_avg, &pid_output, &pid_sv, kp, ki, kd, DIRECT);
 
 uint16_t pulse_counter = 0;
+bool flow_alarm_flag = false;
+bool defrost_flag = false;
 bool alarm_flag = false;
 
 void printPIDParams() {
+  char buf[20];
   Serial.println("--------- PID --------");
-  Serial.println("kp = " + String(kp));
-  Serial.println("ki = " + String(ki));
-  Serial.println("kd = " + String(kd));
-  Serial.println("pid_min = " + String(pid_min));
-  Serial.println("pid_max = " + String(pid_max));
+  sprintf(buf, "kp = %f", kp);
+  Serial.println(buf);
+  sprintf(buf, "ki = %f", ki);
+  Serial.println(buf);
+  sprintf(buf, "kd = %f", kd);
+  Serial.println(buf);
+  sprintf(buf, "pid_min = %d", pid_min);
+  Serial.println(buf);
+  sprintf(buf, "pid_max = %d", pid_max);
+  Serial.println(buf);
   Serial.println();
 }
 
 void printHCParams() {
+  char buf[20];
   Serial.println("---- Heating curve ----");
-  Serial.println("hc_minus5 = " + String(hc_minus5));
-  Serial.println("hc_0 = " + String(hc_0));
-  Serial.println("hc_5 = " + String(hc_5));
-  Serial.println("hc_10 = " + String(hc_10));
+  sprintf(buf, "hc_minus5 = %d", hc_minus5);
+  Serial.println(buf);
+  sprintf(buf, "hc_0 = %d", hc_0);
+  Serial.println(buf);
+  sprintf(buf, "hc_5 = %d", hc_5);
+  Serial.println(buf);
+  sprintf(buf, "hc_10 = %d", hc_10);
+  Serial.println(buf);
   Serial.println();
 }
 
@@ -379,6 +394,8 @@ void setup() {
   Serial.println("================== START ====================");
 
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
+  pinMode(DEFROST_IN_PIN, INPUT_PULLUP);
+  pinMode(ALARM_IN_PIN, INPUT_PULLUP);
   pinMode(HEAT_SWITCH_PIN, OUTPUT);
   digitalWrite(HEAT_SWITCH_PIN, LOW);
   attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), onPulse, FALLING);
@@ -456,9 +473,29 @@ void loop() {
     }
   }
 
-  if(alarm_flag) {
+  if(flow_alarm_flag) {
     digitalWrite(HEAT_SWITCH_PIN, HIGH);
     digitalWrite(LED_BUILTIN, HIGH);
+  }
+
+  if(!digitalRead(DEFROST_IN_PIN) && !defrost_flag) {
+    defrost_flag = true;
+    Serial.println("Defrost started!");
+  }
+
+  if(defrost_flag && digitalRead(DEFROST_IN_PIN)) {
+    defrost_flag = false;
+    Serial.println("Defrost finished!");
+  }
+
+  if(!digitalRead(ALARM_IN_PIN) && !alarm_flag) {
+    alarm_flag = true;
+    Serial.println("AHUBOX alarm raised!");
+  }
+
+  if(alarm_flag && digitalRead(ALARM_IN_PIN)) {
+    alarm_flag = false;
+    Serial.println("AHUBOX alarm released!");
   }
 }
 
@@ -491,13 +528,11 @@ void on10Sec() {
 }
 
 void flowAlarmCheck() {
-  //char str_buf[3];
-  //itoa(pulse_counter, str_buf, 10);
-  //Serial.println(str_buf);
   if(pulse_counter < CHECK_PULSE_THRESHOLD) {
-    alarm_flag = true;
-    //Serial.println(String(pulse_counter) + " is below " + String(CHECK_PULSE_THRESHOLD));
-    //Serial.println("rise ALARM!");
+    flow_alarm_flag = true;
+    char buf[30];
+    sprintf(buf, "%d is below %d\nFlow ALARM rised!", pulse_counter, CHECK_PULSE_THRESHOLD);
+    Serial.println(buf);
   }
   pulse_counter = 0;
 }
