@@ -79,7 +79,7 @@ bool PID::Compute()
       if(pOnE) output = kp * error;
       else output = 0;
 
-Serial.println("SUM: " + String(outputSum));
+//Serial.println("SUM: " + String(outputSum));
 
       /*Compute Rest of PID Output*/
       output += outputSum - kd * dInput;

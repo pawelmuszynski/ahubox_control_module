@@ -18,7 +18,7 @@
 #include "PZEM004Tv30.h"
 
 #define CHECK_PERIOD 1000UL
-#define CHECK_PULSE_THRESHOLD 107  // ~ 0.8 m^3 / h
+#define CHECK_PULSE_THRESHOLD 500  // 107/s = ~ 0.8 m^3 / h
 
 #define INTERRUPT_PIN 2
 #define DS_PIN 4
@@ -37,10 +37,12 @@
 #define PID_MIN_ADDR 0x30  // uint8_t
 #define PID_MAX_ADDR 0x31  // uint8_t
 
-#define HC_MINUS5_ADDR 0x40   // to 0x41 (uint16_t)
-#define HC_0_ADDR 0x42        // to 0x43 (uint16_t)
-#define HC_5_ADDR 0x44        // to 0x45 (uint16_t)
-#define HC_10_ADDR 0x46       // to 0x47 (uint16_t)
+#define HC_MINUS5_ADDR 0x40  // to 0x41 (uint16_t)
+#define HC_0_ADDR 0x42       // to 0x43 (uint16_t)
+#define HC_5_ADDR 0x44       // to 0x45 (uint16_t)
+#define HC_10_ADDR 0x46      // to 0x47 (uint16_t)
+
+#define WIRE_SLAVE_ADDR 8
 
 const char line00[] PROGMEM = "Available commands:";
 const char line01[] PROGMEM = "  help - this help";
@@ -68,57 +70,80 @@ const char line22[] PROGMEM = "Remark: almost all calculations are fixed point, 
 const char line23[] PROGMEM = "For instance temperatures and PID kp, ki, kd parameters are multiplied by 100.";
 const char line24[] PROGMEM = "";
 
-const char * const help_content[] PROGMEM = {
+const char *const help_content[] PROGMEM = {
   line00, line01, line02, line03, line04, line05, line06, line07, line08, line09,
   line10, line11, line12, line13, line14, line15, line16, line17, line18, line19,
   line20, line21, line22, line23, line24
 };
 
-const uint8_t ds_precision=12;
+const uint8_t n_probes = 16;
 
-float kp, ki, kd;
+struct EnergyData {
+  uint16_t voltage, current, power, energy, pf;
+};
+EnergyData energy_avg;
+EnergyData energy_probes[n_probes];
+
+struct PidParams {
+  float kp, ki, kd;
+  uint8_t omin, omax;
+};
+PidParams pid_params;
+
+struct PidData {
+  uint16_t output, sv;
+};
+PidData pid_data;
+
+struct TempData {
+  uint16_t heat, ret;
+  int16_t outside;
+};
+TempData temp_avg;
+TempData temp_probes[n_probes];
+
+struct WireData {
+  TempData td;
+  EnergyData ed;
+  PidData pd;
+};
+
+struct HC {
+  uint16_t hc_minus5, hc_0, hc_5, hc_10;
+};
+HC hc;
+
+const uint8_t ds_precision = 12;
 uint8_t heat_ds[8], return_ds[8], outside_ds[8];
-uint8_t pid_min, pid_max;
-uint16_t hc_minus5, hc_0, hc_5, hc_10;
 
 Timer timer;
 PZEM004Tv30 pzem(Serial2);
 OneWire ow(DS_PIN);
 DallasTemperature ds(&ow);
 
-const uint8_t n_probes = 6;
-
-uint16_t heat_temp_avg, return_temp_avg;
-uint16_t heat_temp[n_probes], return_temp[n_probes];
-
-int16_t outside_temp_avg;
-int16_t outside_temp[n_probes];
-
-uint16_t voltage_avg, current_avg, power_avg, energy_avg, pf_avg;
-uint16_t voltage[n_probes], current[n_probes], power[n_probes], pf[n_probes];
-
-uint16_t pid_output, pid_sv;
-PID pid(&heat_temp_avg, &pid_output, &pid_sv, kp, ki, kd, DIRECT);
+PID pid(&temp_avg.heat, &pid_data.output, &pid_data.sv, pid_params.kp, pid_params.ki, pid_params.kd, DIRECT);
 
 uint16_t pulse_counter = 0;
 bool alarm_flag = false;
 
+uint8_t wire_cmd;
+
 void printPIDParams() {
   Serial.println("--------- PID --------");
-  Serial.println("kp = " + String(kp));
-  Serial.println("ki = " + String(ki));
-  Serial.println("kd = " + String(kd));
-  Serial.println("pid_min = " + String(pid_min));
-  Serial.println("pid_max = " + String(pid_max));
+  Serial.println("kp = " + String(pid_params.kp));
+  Serial.println("ki = " + String(pid_params.ki));
+  Serial.println("kd = " + String(pid_params.kd));
+  Serial.println("pid_min = " + String(pid_params.omin));
+  Serial.println("pid_max = " + String(pid_params.omax));
   Serial.println();
 }
 
 void printHCParams() {
   Serial.println("---- Heating curve ----");
-  Serial.println("hc_minus5 = " + String(hc_minus5));
-  Serial.println("hc_0 = " + String(hc_0));
-  Serial.println("hc_5 = " + String(hc_5));
-  Serial.println("hc_10 = " + String(hc_10));
+  Serial.println("hc_minus5 = " + String(hc.hc_minus5));
+  Serial.println("hc_0 = " + String(hc.hc_0));
+  Serial.println("hc_5 = " + String(hc.hc_5));
+  Serial.println("hc_10 = " + String(hc.hc_10));
   Serial.println();
 }
 
@@ -150,53 +175,155 @@ void printAvailableDS() {
 
 void showValues() {
   char buf[30];
-  sprintf(buf, "Voltage: %01u.%01u V", voltage_avg/10, voltage_avg%10);
+  sprintf(buf, "Voltage: %01u.%01u V", energy_avg.voltage / 10, energy_avg.voltage % 10);
   Serial.println(buf);
-  sprintf(buf, "Current: %01u.%03u A", current_avg/1000, current_avg%1000);
+  sprintf(buf, "Current: %01u.%03u A", energy_avg.current / 1000, energy_avg.current % 1000);
   Serial.println(buf);
-  sprintf(buf, "Power: %01u.%01u W", power_avg/10, current_avg%10);
+  sprintf(buf, "Power: %01u.%01u W", energy_avg.power / 10, energy_avg.power % 10);
   Serial.println(buf);
-  sprintf(buf, "PF: %01u.%02u", pf_avg/100, pf_avg%100);
+  sprintf(buf, "PF: %01u.%02u", energy_avg.pf / 100, energy_avg.pf % 100);
   Serial.println(buf);
-  sprintf(buf, "heat_temp: %01d.%02d °C", heat_temp_avg/100, heat_temp_avg%100);
+  sprintf(buf, "heat_temp: %01d.%02d °C", temp_avg.heat / 100, temp_avg.heat % 100);
   Serial.println(buf);
-  sprintf(buf, "return_temp: %01d.%02d °C", return_temp_avg/100, return_temp_avg%100);
+  sprintf(buf, "return_temp: %01d.%02d °C", temp_avg.ret / 100, temp_avg.ret % 100);
   Serial.println(buf);
-  sprintf(buf, "outside_temp: %01d.%02d °C", outside_temp_avg/100, outside_temp_avg%100);
+  sprintf(buf, "outside_temp: %01d.%02d °C", temp_avg.outside / 100, temp_avg.outside % 100);
   Serial.println(buf);
-  sprintf(buf, "pid_sv: %01d.%02d °C", pid_sv/100, pid_sv%100);
+  sprintf(buf, "pid_sv: %01d.%02d °C", pid_data.sv / 100, pid_data.sv % 100);
   Serial.println(buf);
-  sprintf(buf, "set power: %d (%d%%)", pid_output, map(pid_output, 0, 255, 0, 100));
+  sprintf(buf, "set power: %d (%d%%)", pid_data.output, map(pid_data.output, 0, 255, 0, 100));
   Serial.println(buf);
 }
-
+/*
 int16_t avgCalc(int16_t *probes, const uint8_t &n_probes) {
-  int16_t sum=0;
-  for(uint8_t i=0; i<n_probes; i++) {
+  int32_t sum = 0;
+  for (uint8_t i = 0; i < n_probes; i++) {
     sum += probes[i];
   }
   return sum /= n_probes;
 }
+*/
 
 void avgCalcAll() {
-  voltage_avg = avgCalc(voltage, n_probes);
-  current_avg = avgCalc(current, n_probes);
-  power_avg = avgCalc(power, n_probes);
-  pf_avg = avgCalc(pf, n_probes);
-  heat_temp_avg = avgCalc(heat_temp, n_probes);
-  return_temp_avg = avgCalc(return_temp, n_probes);
-  outside_temp_avg = avgCalc(outside_temp, n_probes);
+
+  energy_avg.voltage = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    energy_avg.voltage += energy_probes[i].voltage/n_probes;
+  }
+
+  energy_avg.current = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    energy_avg.current += energy_probes[i].current/n_probes;
+  }
+
+  energy_avg.power = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    energy_avg.power += energy_probes[i].power/n_probes;
+  }
+
+  energy_avg.pf = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    energy_avg.pf += energy_probes[i].pf/n_probes;
+  }
+
+  temp_avg.heat = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    temp_avg.heat += temp_probes[i].heat/n_probes;
+  }
+
+  temp_avg.ret = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    temp_avg.ret += temp_probes[i].ret/n_probes;
+  }
+
+  temp_avg.outside = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    temp_avg.outside += temp_probes[i].outside/n_probes;
+  }
+
+
+/*
+  int32_t sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += energy_probes[i].voltage;
+  }
+  energy_avg.voltage = sum/n_probes;
+
+  sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += energy_probes[i].current;
+  }
+  energy_avg.current = sum/n_probes;
+
+  sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += energy_probes[i].power;
+  }
+  energy_avg.power = sum/n_probes;
+
+  sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += energy_probes[i].pf;
+  }
+  energy_avg.pf = sum/n_probes;
+
+  sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += temp_probes[i].heat;
+  }
+  temp_avg.heat = sum/n_probes;
+
+  sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += temp_probes[i].ret;
+  }
+  temp_avg.ret = sum/n_probes;
+
+  sum = 0;
+  for(uint8_t i = 0; i < n_probes; i++) {
+    sum += temp_probes[i].outside;
+  }
+  temp_avg.outside = sum/n_probes;
+*/
+
+/*
+int32_t voltage_sum = 0;
+int32_t current_sum = 0;
+int32_t power_sum = 0;
+int32_t pf_sum = 0;
+int32_t heat_sum = 0;
+int32_t ret_sum = 0;
+int32_t outside_sum = 0;
+
+  for(uint8_t i = 0; i < n_probes; i++) {
+    voltage_sum += energy_probes[i].voltage;
+    current_sum += energy_probes[i].current;
+    power_sum += energy_probes[i].power;
+    pf_sum += energy_probes[i].pf;
+    heat_sum += temp_probes[i].heat;
+    ret_sum += temp_probes[i].ret;
+    outside_sum += temp_probes[i].outside;
+  }
+  Serial.println("outside sum: " + String(outside_sum));
+  energy_avg.voltage = voltage_sum/n_probes;
+  energy_avg.current = current_sum/n_probes;
+  energy_avg.power = power_sum/n_probes;
+  energy_avg.pf = pf_sum/n_probes;
+  temp_avg.heat = heat_sum/n_probes;
+  temp_avg.ret = ret_sum/n_probes;
+  temp_avg.outside = outside_sum/n_probes;
+*/
 }
 
 void printHelp() {
   char buf[100];
-  for(uint8_t i=0; i<sizeof(help_content)/sizeof(help_content[0]); i++) {
+  for (uint8_t i = 0; i < sizeof(help_content) / sizeof(help_content[0]); i++) {
     strcpy_P(buf, (char *)pgm_read_word(&(help_content[i])));
     Serial.println(buf);
   }
 }
 
-int16_t getHCValue(int16_t outside_temp) {
+int16_t getHCValue(HC hc, int16_t outside_temp) {
   /* 
     Linear approximation between given setpoints
     Generic math formula:
@@ -215,67 +342,55 @@ int16_t getHCValue(int16_t outside_temp) {
   int16_t th1, th2, to1;
 
   if (outside_temp >= 1000) {
-    return hc_10;
+    return hc.hc_10;
   } else if (outside_temp >= 500 and outside_temp < 1000) {
-    th1 = hc_5;
-    th2 = hc_10;
+    th1 = hc.hc_5;
+    th2 = hc.hc_10;
     to1 = 500;
   } else if (outside_temp >= 0 and outside_temp < 500) {
-    th1 = hc_0;
-    th2 = hc_5;
+    th1 = hc.hc_0;
+    th2 = hc.hc_5;
     to1 = 0;
   } else if (outside_temp >= -500 and outside_temp < 0) {
-    th1 = hc_minus5;
-    th2 = hc_0;
+    th1 = hc.hc_minus5;
+    th2 = hc.hc_0;
     to1 = -500;
   } else if (outside_temp < -500) {
-    return hc_minus5;
+    return hc.hc_minus5;
   }
   return ((th2 - th1) / 500) * (outside_temp - to1) + th1;
 }
 
 void processGet(char *param) {
-  if(!strcmp(param, "ds")) {
+  if (!strcmp(param, "ds")) {
     printAvailableDS();
-  }
-  else if(!strcmp(param, "hc")) {
+  } else if (!strcmp(param, "hc")) {
     printHCParams();
-  }
-  else if(!strcmp(param, "pid")) {
+  } else if (!strcmp(param, "pid")) {
     printPIDParams();
-  }
-  else {
+  } else {
     Serial.print("Param: ");
     Serial.println(param);
     Serial.print("Value: ");
-    if(!strcmp(param, "kp")) {
-      Serial.println(kp);
-    }
-    else if(!strcmp(param, "ki")) {
-      Serial.println(ki);
-    }
-    else if(!strcmp(param, "kd")) {
-      Serial.println(kd);
-    }
-    else if(!strcmp(param, "pid_min")) {
-      Serial.println(pid_min);
-    }
-    else if(!strcmp(param, "pid_max")) {
-      Serial.println(pid_max);
-    }
-    else if(!strcmp(param, "hc_minus5")) {
-      Serial.println(hc_minus5);
-    }
-    else if(!strcmp(param, "hc_0")) {
-      Serial.println(hc_0);
-    }
-    else if(!strcmp(param, "hc_5")) {
-      Serial.println(hc_5);
-    }
-    else if(!strcmp(param, "hc_10")) {
-      Serial.println(hc_10);
-    }
-    else {
+    if (!strcmp(param, "kp")) {
+      Serial.println(pid_params.kp);
+    } else if (!strcmp(param, "ki")) {
+      Serial.println(pid_params.ki);
+    } else if (!strcmp(param, "kd")) {
+      Serial.println(pid_params.kd);
+    } else if (!strcmp(param, "pid_min")) {
+      Serial.println(pid_params.omin);
+    } else if (!strcmp(param, "pid_max")) {
+      Serial.println(pid_params.omax);
+    } else if (!strcmp(param, "hc_minus5")) {
+      Serial.println(hc.hc_minus5);
+    } else if (!strcmp(param, "hc_0")) {
+      Serial.println(hc.hc_0);
+    } else if (!strcmp(param, "hc_5")) {
+      Serial.println(hc.hc_5);
+    } else if (!strcmp(param, "hc_10")) {
+      Serial.println(hc.hc_10);
+    } else {
       Serial.println("Parameter not found.");
     }
   }
@@ -287,60 +402,48 @@ void processSet(char *buf) {
   //char *param = (char*) malloc(delimiter_ptr - buf + 1);
   //char *value = (char*) malloc(strlen(delimiter_ptr));
   sscanf(buf, "%s %s", param, value);
-  if(!strcmp(param, "kp")) {
-    kp = atof(value);
-    EEPROM.put(KP_ADDR, kp);
-    pid.SetTunings(kp, ki, kd);
-  }
-  else if(!strcmp(param, "ki")) {
-    ki = atof(value);
-    EEPROM.put(KI_ADDR, ki);
-    pid.SetTunings(kp, ki, kd);
-  }
-  else if(!strcmp(param, "kd")) {
-    kd = atof(value);
-    EEPROM.put(KD_ADDR, kd);
-    pid.SetTunings(kp, ki, kd);
-  }
-  else if(!strcmp(param, "pid_min")) {
-    pid_min = atoi(value);
-    EEPROM.put(PID_MIN_ADDR, pid_min);
-    pid.SetOutputLimits(pid_min, pid_max);
-  }
-  else if(!strcmp(param, "pid_max")) {
-    pid_max = atoi(value);
-    EEPROM.put(PID_MAX_ADDR, pid_max);
-    pid.SetOutputLimits(pid_min, pid_max);
-  }
-  else if(!strcmp(param, "hc_minus5")) {
-    hc_minus5 = atof(value);
-    EEPROM.put(HC_MINUS5_ADDR, hc_minus5);
-  }
-  else if(!strcmp(param, "hc_0")) {
-    hc_0 = atof(value);
-    EEPROM.put(HC_0_ADDR, hc_0);
-  }
-  else if(!strcmp(param, "hc_5")) {
-    hc_5 = atof(value);
-    EEPROM.put(HC_5_ADDR, hc_5);
-  }
-  else if(!strcmp(param, "hc_10")) {
-    hc_10 = atof(value);
-    EEPROM.put(HC_10_ADDR, hc_10);
-  }
-  else if(!strcmp(param, "heat_ds")) {
+  if (!strcmp(param, "kp")) {
+    pid_params.kp = atof(value);
+    EEPROM.put(KP_ADDR, pid_params.kp);
+    pid.SetTunings(pid_params.kp, pid_params.ki, pid_params.kd);
+  } else if (!strcmp(param, "ki")) {
+    pid_params.ki = atof(value);
+    EEPROM.put(KI_ADDR, pid_params.ki);
+    pid.SetTunings(pid_params.kp, pid_params.ki, pid_params.kd);
+  } else if (!strcmp(param, "kd")) {
+    pid_params.kd = atof(value);
+    EEPROM.put(KD_ADDR, pid_params.kd);
+    pid.SetTunings(pid_params.kp, pid_params.ki, pid_params.kd);
+  } else if (!strcmp(param, "pid_min")) {
+    pid_params.omin = atoi(value);
+    EEPROM.put(PID_MIN_ADDR, pid_params.omin);
+    pid.SetOutputLimits(pid_params.omin, pid_params.omax);
+  } else if (!strcmp(param, "pid_max")) {
+    pid_params.omax = atoi(value);
+    EEPROM.put(PID_MAX_ADDR, pid_params.omax);
+    pid.SetOutputLimits(pid_params.omin, pid_params.omin);
+  } else if (!strcmp(param, "hc_minus5")) {
+    hc.hc_minus5 = atof(value);
+    EEPROM.put(HC_MINUS5_ADDR, hc.hc_minus5);
+  } else if (!strcmp(param, "hc_0")) {
+    hc.hc_0 = atof(value);
+    EEPROM.put(HC_0_ADDR, hc.hc_0);
+  } else if (!strcmp(param, "hc_5")) {
+    hc.hc_5 = atof(value);
+    EEPROM.put(HC_5_ADDR, hc.hc_5);
+  } else if (!strcmp(param, "hc_10")) {
+    hc.hc_10 = atof(value);
+    EEPROM.put(HC_10_ADDR, hc.hc_10);
+  } else if (!strcmp(param, "heat_ds")) {
     sscanf(value, "%x-%x-%x-%x-%x-%x-%x-%x", &heat_ds[0], &heat_ds[1], &heat_ds[2], &heat_ds[3], &heat_ds[4], &heat_ds[5], &heat_ds[6], &heat_ds[7]);
     EEPROM.put(HEAT_DS_ADDR, heat_ds);
-  }
-  else if(!strcmp(param, "return_ds")) {
+  } else if (!strcmp(param, "return_ds")) {
     sscanf(value, "%x-%x-%x-%x-%x-%x-%x-%x", &return_ds[0], &return_ds[1], &return_ds[2], &return_ds[3], &return_ds[4], &return_ds[5], &return_ds[6], &return_ds[7]);
     EEPROM.put(RETURN_DS_ADDR, return_ds);
-  }
-  else if(!strcmp(param, "outside_ds")) {
+  } else if (!strcmp(param, "outside_ds")) {
     sscanf(value, "%x-%x-%x-%x-%x-%x-%x-%x", &outside_ds[0], &outside_ds[1], &outside_ds[2], &outside_ds[3], &outside_ds[4], &outside_ds[5], &outside_ds[6], &outside_ds[7]);
     EEPROM.put(OUTSIDE_DS_ADDR, outside_ds);
-  }
-  else if(!strcmp(param, "factory") && !strcmp(value, "defaults")) {
+  } else if (!strcmp(param, "factory") && !strcmp(value, "defaults")) {
     processSet("kp 20");
     processSet("ki 0.02");
     processSet("kd 0");
@@ -350,8 +453,7 @@ void processSet(char *buf) {
     processSet("hc_0 3700");
     processSet("hc_5 3200");
     processSet("hc_10 2700");
-  }
-  else {
+  } else {
     Serial.println("Parameter not found.");
   }
 }
@@ -359,16 +461,13 @@ void processSet(char *buf) {
 void processCommand(char *buf) {
   Serial.println("Received command:");
   Serial.println(buf);
-  if(!strncmp(buf, "get ", 4)) {  // get command
+  if (!strncmp(buf, "get ", 4)) {  // get command
     processGet(buf + 4);
-  }
-  else if(!strncmp(buf, "set ", 4)) {  // set command
+  } else if (!strncmp(buf, "set ", 4)) {  // set command
     processSet(buf + 4);
-  }
-  else if(!strncmp(buf, "help", 4)) {  // help command
+  } else if (!strncmp(buf, "help", 4)) {  // help command
     printHelp();
-  }
-  else {
+  } else {
     Serial.println("Command not found. Use help command.");
   }
   Serial.println("==================");
@@ -384,23 +483,23 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), onPulse, FALLING);
 
   // ====== Heating curve ======
-  EEPROM.get(HC_MINUS5_ADDR, hc_minus5);
-  EEPROM.get(HC_0_ADDR, hc_0);
-  EEPROM.get(HC_5_ADDR, hc_5);
-  EEPROM.get(HC_10_ADDR, hc_10);
+  EEPROM.get(HC_MINUS5_ADDR, hc.hc_minus5);
+  EEPROM.get(HC_0_ADDR, hc.hc_0);
+  EEPROM.get(HC_5_ADDR, hc.hc_5);
+  EEPROM.get(HC_10_ADDR, hc.hc_10);
   printHCParams();
 
   // =========== PID ===========
-  EEPROM.get(KP_ADDR, kp);
-  EEPROM.get(KI_ADDR, ki);
-  EEPROM.get(KD_ADDR, kd);
-  EEPROM.get(PID_MIN_ADDR, pid_min);
-  EEPROM.get(PID_MAX_ADDR, pid_max);
+  EEPROM.get(KP_ADDR, pid_params.kp);
+  EEPROM.get(KI_ADDR, pid_params.ki);
+  EEPROM.get(KD_ADDR, pid_params.kd);
+  EEPROM.get(PID_MIN_ADDR, pid_params.omin);
+  EEPROM.get(PID_MAX_ADDR, pid_params.omax);
   printPIDParams();
-  pid.SetTunings(kp, ki, kd);
+  pid.SetTunings(pid_params.kp, pid_params.ki, pid_params.kd);
   pid.SetMode(AUTOMATIC);
   pid.SetSampleTime(10000);
-  pid.SetOutputLimits(pid_min, pid_max);
+  pid.SetOutputLimits(pid_params.omin, pid_params.omax);
 
   // ========== DS =============
   ds.begin();
@@ -430,9 +529,14 @@ void setup() {
   Serial.println(buf);
 
   // --- timers ---
-  timer.every(1000, on1Sec);
-  timer.every(10000, on10Sec);
-  timer.every(1000, flowAlarmCheck);
+  timer.every(3000, on3Sec);
+  timer.every(30000, on30Sec);
+  timer.every(5000, flowAlarmCheck);
+
+  // --- Wire ---
+  Wire.begin(WIRE_SLAVE_ADDR);
+  Wire.onRequest(onWireResponseRequest);
+  Wire.onReceive(onWireReceive);
 }
 
 void loop() {
@@ -445,18 +549,18 @@ void loop() {
   static uint8_t buf_index = 0;
   if (Serial.available()) {
     received = Serial.read();
-    if(received == '\n' || received == '\r') {  // command fully received
+    if (received == '\n' || received == '\r') {  // command fully received
       processCommand(serial_buf);
       serial_buf[0] = '\0';  // clear buffer
       buf_index = 0;
     } else {  // command not fully received, attaching the last character
       serial_buf[buf_index] = received;
-      serial_buf[buf_index+1] = '\0';
       buf_index++;
+      serial_buf[buf_index] = '\0';
     }
   }
 
-  if(alarm_flag) {
+  if (alarm_flag) {
     digitalWrite(HEAT_SWITCH_PIN, HIGH);
     digitalWrite(LED_BUILTIN, HIGH);
   }
@@ -468,36 +572,109 @@ void onPulse() {
 }
 
 uint8_t i = 0;
-void on1Sec() {
-    voltage[i] = pzem.voltage();  // x 0.1V
-    current[i] = pzem.current();  // x 0.001A
-    power[i] = pzem.power();      // x 0.1W
-    pf[i] = pzem.pf();            // x 0.01
-    ds.requestTemperatures();
-    heat_temp[i] = (ds.getTemp(heat_ds)*78125+50000)/100000;        // x 0.01 C
-    return_temp[i] = (ds.getTemp(return_ds)*78125+50000)/100000;    // x 0.01 C
-    outside_temp[i] = (ds.getTemp(outside_ds)*78125+50000)/100000;  // x 0.01 C
-    i++;
-    if(i>=n_probes) i=0;
+void on3Sec() {
+  energy_probes[i].voltage = pzem.voltage();  // x 0.1 V
+  energy_probes[i].current = pzem.current();  // x 0.001 A
+  energy_probes[i].power = pzem.power();      // x 0.1 W
+  energy_probes[i].pf = pzem.pf();            // x 0.0 1
+  ds.requestTemperatures();
+  temp_probes[i].heat = (ds.getTemp(heat_ds) * 78125 + 50000) / 100000;        // x 0.01 °C
+  temp_probes[i].ret = (ds.getTemp(return_ds) * 78125 + 50000) / 100000;    // x 0.01 °C
+  temp_probes[i].outside = (ds.getTemp(outside_ds) * 78125 + 50000) / 100000;  // x 0.01 °C
+  
+/*  
+  char heat[10], ret[10], outside[10], buf[50];
+  itoa(temp_probes[i].heat, heat, 10);
+  itoa(temp_probes[i].ret, ret, 10);
+  itoa(temp_probes[i].outside, outside, 10);
+  snprintf(buf, sizeof(buf), "%s %s %s\n----------------------", heat, ret, outside);
+
+  Serial.println(buf);
+*/
+
+  i++;
+  if (i >= n_probes) i = 0;
 }
 
-void on10Sec() {
-  Serial.println("====== ON 10 sec ======");
+void on30Sec() {
+  Serial.println("====== ON 30 sec ======");
   avgCalcAll();
-  pid_sv = getHCValue(outside_temp_avg);
-  digitalWrite(PWM_PIN, pid_sv);
+  pid_data.sv = getHCValue(hc, temp_avg.outside);
+  digitalWrite(PWM_PIN, pid_data.sv);
   showValues();
   Serial.println("=======================");
 }
 
 void flowAlarmCheck() {
-  //char str_buf[3];
-  //itoa(pulse_counter, str_buf, 10);
+  char str_buf[4];
+  itoa(pulse_counter, str_buf, 10);
   //Serial.println(str_buf);
-  if(pulse_counter < CHECK_PULSE_THRESHOLD) {
+  if (pulse_counter < CHECK_PULSE_THRESHOLD) {
     alarm_flag = true;
-    //Serial.println(String(pulse_counter) + " is below " + String(CHECK_PULSE_THRESHOLD));
-    //Serial.println("rise ALARM!");
+    Serial.println(String(pulse_counter) + " is below " + String(CHECK_PULSE_THRESHOLD));
+    Serial.println("rise ALARM!");
   }
   pulse_counter = 0;
+}
+
+
+void onWireResponseRequest() {
+  Serial.println("Wire response request");
+
+  switch (wire_cmd) {
+    case 0x01:
+      Serial.println("respond domoticz values");
+      WireData wd;
+      wd.td = temp_avg;
+      wd.ed = energy_avg;
+      wd.pd = pid_data;
+      Wire.write((byte *) &wd, sizeof(wd));
+      break;
+    case 0x02:
+      Serial.println("respond pid params");
+      Wire.write((byte *) &pid_params, sizeof(pid_params));
+      break;
+    case 0x03:
+      Serial.println("respond hc");
+      Wire.write((byte *) &hc, sizeof(hc));
+      break;
+    default:
+      Serial.println("responde default (uknonwn command)");
+      Wire.write(0x00);
+  }
+  wire_cmd = 0;
+}
+
+void onWireReceive(int bytes) {
+  Serial.print("WIRE RECEIVE");
+  Serial.print(bytes);
+  Serial.println(" bytes.");
+  char buf[50];
+  uint8_t i = 0;
+  if(Wire.available()) wire_cmd = Wire.read();
+  while(Wire.available()) {
+    buf[i] = Wire.read();
+    i++;
+  }
+  buf[i] = '\0';
+  Serial.print("Received: ");
+  Serial.println(wire_cmd);
+  Serial.println(buf);
+  switch (wire_cmd) {
+    case 0x01:
+      Serial.println("get domoticz values cmd");
+      break;
+    case 0x02:
+      Serial.println("get pid cmd");
+      break;
+    case 0x03:
+      Serial.println("get hc cmd");
+      break;
+    case 0x10:
+      Serial.println("set parameters cmd");
+      processSet(buf);
+      break;
+    case 0x11:
+      Serial.println("set parameters cmd (fake)");
+  }
 }
