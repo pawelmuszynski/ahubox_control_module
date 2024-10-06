@@ -18,11 +18,11 @@ class PID
 
   //commonly used functions **************************************************************************
     PID(uint16_t*, uint16_t*, uint16_t*,        // * constructor.  links the PID to the Input, Output, and 
-        float, float, float, int, int);//   Setpoint.  Initial tuning parameters are also set here.
+        uint16_t, uint16_t, uint16_t, int, int);//   Setpoint.  Initial tuning parameters are also set here.
                                           //   (overload for specifying proportional mode)
 
     PID(uint16_t*, uint16_t*, uint16_t*,        // * constructor.  links the PID to the Input, Output, and 
-        float, float, float, int);     //   Setpoint.  Initial tuning parameters are also set here
+        uint16_t, uint16_t, uint16_t, int);     //   Setpoint.  Initial tuning parameters are also set here
 	
     void SetMode(int Mode);               // * sets PID to either Manual (0) or Auto (non-0)
 
@@ -38,38 +38,38 @@ class PID
 
 
   //available but not commonly used functions ********************************************************
-    void SetTunings(float, float,       // * While most users will set the tunings once in the 
-                    float);         	    //   constructor, this function gives the user the option
+    void SetTunings(uint16_t, uint16_t,       // * While most users will set the tunings once in the 
+                    uint16_t);         	    //   constructor, this function gives the user the option
                                           //   of changing tunings during runtime for Adaptive control
-    void SetTunings(float, float,       // * overload for specifying proportional mode
-                    float, int);         	  
+    void SetTunings(uint16_t, uint16_t,       // * overload for specifying proportional mode
+                    uint16_t, int);         	  
 
 	void SetControllerDirection(int);	  // * Sets the Direction, or "Action" of the controller. DIRECT
 										  //   means the output will increase when error is positive. REVERSE
 										  //   means the opposite.  it's very unlikely that this will be needed
 										  //   once it is set in the constructor.
-    void SetSampleTime(int);              // * sets the frequency, in Milliseconds, with which 
+    void SetSampleTime(uint16_t);              // * sets the frequency, in Milliseconds, with which 
                                           //   the PID calculation is performed.  default is 100
 										  
 										  
 										  
   //Display functions ****************************************************************
-	float GetKp();						  // These functions query the pid for interal values.
-	float GetKi();						  //  they were created mainly for the pid front-end,
-	float GetKd();						  // where it's important to know what is actually 
+	uint16_t GetKp();						  // These functions query the pid for interal values.
+	uint16_t GetKi();						  //  they were created mainly for the pid front-end,
+	uint16_t GetKd();						  // where it's important to know what is actually 
 	int GetMode();						  //  inside the PID.
 	int GetDirection();					  //
 
   private:
 	void Initialize();
 	
-	float dispKp;				// * we'll hold on to the tuning parameters in user-entered 
-	float dispKi;				//   format for display purposes
-	float dispKd;				//
+	//float dispKp;				// * we'll hold on to the tuning parameters in user-entered 
+	//float dispKi;				//   format for display purposes
+	//float dispKd;				//
     
-	float kp;                  // * (P)roportional Tuning Parameter
-  float ki;                  // * (I)ntegral Tuning Parameter
-  float kd;                  // * (D)erivative Tuning Parameter
+	uint16_t kp;                  // * (P)roportional Tuning Parameter
+  uint32_t ki;                  // * (I)ntegral Tuning Parameter
+  uint32_t kd;                  // * (D)erivative Tuning Parameter
 
 	int controllerDirection;
 	int pOn;
@@ -79,10 +79,12 @@ class PID
   uint16_t *mySetpoint;           //   PID, freeing the user from having to constantly tell us
                                   //   what these values are.  with pointers we'll just know.
 			  
-	unsigned long lastTime;
-	float outputSum, lastInput;
+	uint16_t lastTime;
+  int32_t outputSum;
+	uint16_t lastInput;
+  int32_t lastError;
 
-	unsigned long SampleTime;
+	uint16_t SampleTime;
 	uint16_t outMin, outMax;
 	bool inAuto, pOnE;
 };
