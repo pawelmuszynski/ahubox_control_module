@@ -17,8 +17,8 @@
  *    The parameters specified here are those for for which we can't set up
  *    reliable defaults, so we need to have the user set them.
  ***************************************************************************/
-PID::PID(uint16_t* Input, uint16_t* Output, uint16_t* Setpoint,
-        uint16_t Kp, uint16_t Ki, uint16_t Kd, int POn, int ControllerDirection)
+PID::PID(uint16_t* Input, uint8_t* Output, uint16_t* Setpoint,
+        float Kp, float Ki, float Kd, int POn, int ControllerDirection)
 {
     myOutput = Output;
     myInput = Input;
@@ -28,12 +28,12 @@ PID::PID(uint16_t* Input, uint16_t* Output, uint16_t* Setpoint,
     PID::SetOutputLimits(0, 255);				//default output limit corresponds to
 												//the arduino pwm limits
 
-    SampleTime = 1;							//default Controller Sample Time is 1 second
+    SampleTime = 100;							//default Controller Sample Time is 0.1 seconds
 
     PID::SetControllerDirection(ControllerDirection);
     PID::SetTunings(Kp, Ki, Kd, POn);
 
-    lastTime = millis()/1000-SampleTime;
+    lastTime = millis()-SampleTime;
 }
 
 /*Constructor (...)*********************************************************
@@ -41,8 +41,8 @@ PID::PID(uint16_t* Input, uint16_t* Output, uint16_t* Setpoint,
  *    to use Proportional on Error without explicitly saying so
  ***************************************************************************/
 
-PID::PID(uint16_t* Input, uint16_t* Output, uint16_t* Setpoint,
-        uint16_t Kp, uint16_t Ki, uint16_t Kd, int ControllerDirection)
+PID::PID(uint16_t* Input, uint8_t* Output, uint16_t* Setpoint,
+        float Kp, float Ki, float Kd, int ControllerDirection)
     :PID::PID(Input, Output, Setpoint, Kp, Ki, Kd, P_ON_E, ControllerDirection)
 {
 
@@ -58,19 +58,16 @@ PID::PID(uint16_t* Input, uint16_t* Output, uint16_t* Setpoint,
 bool PID::Compute()
 {
    if(!inAuto) return false;
-   uint16_t now = millis()/1000;
-   uint16_t timeChange = (now - lastTime);
+   unsigned long now = millis();
+   unsigned long timeChange = (now - lastTime);
    if(timeChange>=SampleTime)
    {
       /*Compute all the working error variables*/
-      uint16_t input = *myInput;
-      int32_t error = (int32_t)*mySetpoint - input;
-      int16_t dInput = input - lastInput;
-      int32_t dError = error - lastError;
-      outputSum+= (int32_t)(ki * error)/100;
-      Serial.println("input: " + String(input));
-      Serial.println("setpoint: " + String(*mySetpoint));
-      Serial.println("Error: " + String(error));
+      float input = *myInput;
+      float error = *mySetpoint - input;
+      float dInput = (input - lastInput);
+      outputSum+= (ki * error);
+
       /*Add Proportional on Measurement, if P_ON_M is specified*/
       if(!pOnE) outputSum-= kp * dInput;
 
@@ -78,29 +75,19 @@ bool PID::Compute()
       else if(outputSum < outMin) outputSum= outMin;
 
       /*Add Proportional on Error, if P_ON_E is specified*/
-	    int16_t output;
-      if(pOnE) output = (kp * error)/100;
+	   float output;
+      if(pOnE) output = kp * error;
       else output = 0;
 
       /*Compute Rest of PID Output*/
-      //output += outputSum - (kd * dInput)/1000;
-      output += outputSum + (kd * dError)/1000;
+      output += outputSum - kd * dInput;
 
 	    if(output > outMax) output = outMax;
       else if(output < outMin) output = outMin;
-	    *myOutput = output/100;
-
-Serial.println("kp: " + String(kp));
-Serial.println("ki: " + String(ki));
-Serial.println("kd: " + String(kd/1000));
-Serial.println("OutputSum: " + String(outputSum));
-Serial.println("dError: " + String(dError));
-Serial.println("Output: " + String(output));
-Serial.println("----------");
+	    *myOutput = output;
 
       /*Remember some variables for next time*/
       lastInput = input;
-      lastError = error;
       lastTime = now;
 	    return true;
    }
@@ -112,18 +99,22 @@ Serial.println("----------");
  * it's called automatically from the constructor, but tunings can also
  * be adjusted on the fly during normal operation
  ******************************************************************************/
-void PID::SetTunings(uint16_t Kp, uint16_t Ki, uint16_t Kd, int POn)
+void PID::SetTunings(float Kp, float Ki, float Kd, int POn)
 {
-  if (Kp<0 || Ki<0 || Kd<0) return;
+   if (Kp<0 || Ki<0 || Kd<0) return;
 
-  pOn = POn;
-  pOnE = POn == P_ON_E;
+   pOn = POn;
+   pOnE = POn == P_ON_E;
 
-  kp = Kp;
-  ki = (uint32_t)Ki * SampleTime;
-  kd = (uint32_t)Kd * 1000 / SampleTime;
+   dispKp = Kp; dispKi = Ki; dispKd = Kd;
 
-  if(controllerDirection ==REVERSE) {
+   float SampleTimeInSec = ((float)SampleTime)/1000;
+   kp = Kp;
+   ki = Ki * SampleTimeInSec;
+   kd = Kd / SampleTimeInSec;
+
+  if(controllerDirection ==REVERSE)
+   {
       kp = (0 - kp);
       ki = (0 - ki);
       kd = (0 - kd);
@@ -133,36 +124,22 @@ void PID::SetTunings(uint16_t Kp, uint16_t Ki, uint16_t Kd, int POn)
 /* SetTunings(...)*************************************************************
  * Set Tunings using the last-rembered POn setting
  ******************************************************************************/
-void PID::SetTunings(uint16_t Kp, uint16_t Ki, uint16_t Kd)
-{
+void PID::SetTunings(float Kp, float Ki, float Kd){
     SetTunings(Kp, Ki, Kd, pOn); 
 }
 
 /* SetSampleTime(...) *********************************************************
- * sets the period, in Seconds, at which the calculation is performed
+ * sets the period, in Milliseconds, at which the calculation is performed
  ******************************************************************************/
-void PID::SetSampleTime(uint16_t NewSampleTime)
+void PID::SetSampleTime(int NewSampleTime)
 {
-   if (NewSampleTime > 0) {
+   if (NewSampleTime > 0)
+   {
       float ratio  = (float)NewSampleTime
                       / (float)SampleTime;
-/*
-                      Serial.print("Ratio: ");
-                      Serial.println(ratio);
-                      Serial.print("ki: ");
-                      Serial.println(ki);
-                      Serial.print("kd: ");
-                      Serial.println(kd);
-*/
       ki *= ratio;
       kd /= ratio;
-      SampleTime = NewSampleTime;
-/*
-                      Serial.print("new ki: ");
-                      Serial.println(ki);
-                      Serial.print("new kd: ");
-                      Serial.println(kd);
-*/
+      SampleTime = (unsigned long)NewSampleTime;
    }
 }
 
@@ -177,13 +154,13 @@ void PID::SetSampleTime(uint16_t NewSampleTime)
 void PID::SetOutputLimits(uint8_t Min, uint8_t Max)
 {
    if(Min >= Max) return;
-   outMin = (uint16_t)Min * 100;
-   outMax = (uint16_t)Max * 100;
+   outMin = Min;
+   outMax = Max;
 
    if(inAuto)
    {
-	   if(*myOutput > Max) *myOutput = Max;
-	   else if(*myOutput < Min) *myOutput = Min;
+	   if(*myOutput > outMax) *myOutput = outMax;
+	   else if(*myOutput < outMin) *myOutput = outMin;
 
 	   if(outputSum > outMax) outputSum= outMax;
 	   else if(outputSum < outMin) outputSum= outMin;
@@ -211,9 +188,8 @@ void PID::SetMode(int Mode)
  ******************************************************************************/
 void PID::Initialize()
 {
-   outputSum = *myOutput*100;
+   outputSum = *myOutput;
    lastInput = *myInput;
-   lastError = 0;
    if(outputSum > outMax) outputSum = outMax;
    else if(outputSum < outMin) outputSum = outMin;
 }
@@ -240,9 +216,9 @@ void PID::SetControllerDirection(int Direction)
  * functions query the internal state of the PID.  they're here for display
  * purposes.  this are the functions the PID Front-end uses for example
  ******************************************************************************/
-uint16_t PID::GetKp(){ return  kp;}
-uint16_t PID::GetKi(){ return  ki / SampleTime;}
-uint16_t PID::GetKd(){ return  kd * SampleTime;}
+float PID::GetKp(){ return  dispKp; }
+float PID::GetKi(){ return  dispKi;}
+float PID::GetKd(){ return  dispKd;}
 int PID::GetMode(){ return  inAuto ? AUTOMATIC : MANUAL;}
 int PID::GetDirection(){ return controllerDirection;}
 
