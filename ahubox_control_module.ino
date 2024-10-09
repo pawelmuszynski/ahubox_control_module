@@ -90,8 +90,9 @@ struct __attribute__((aligned(4)))PidParams {
   uint8_t omin, omax;
 };
 
-struct PidData {
-  uint16_t output, sv;
+struct __attribute__((aligned(4)))PidData {
+  uint16_t sv;
+  uint8_t output;
 };
 
 struct TempData {
@@ -616,7 +617,6 @@ void on60Sec() {
   pid_data.sv = getHCValue(heat_curve, temp_avg.outside);
   digitalWrite(PWM_PIN, pid_data.output);
   showValues();
-  Serial.println("=======================");
 }
 
 void flowAlarmCheck() {
@@ -639,6 +639,9 @@ void wireRespondDomoticzValues() {
   wd.ed = energy_avg;
   wd.pd = pid_data;
   Wire.write((byte *) &wd, sizeof(wd));
+  Serial.println("=======================");
+  Serial.println(wd.pd.sv);
+  Serial.println(wd.pd.output);
 }
 
 void wireRespondPidParams() {
@@ -732,25 +735,33 @@ void onWireReceive(int bytes) {
 }
 
 void saveDataToEEPROM() {
-  PidParams pp;
-  EEPROM.get(KP_ADDR, pp.kp);
-  EEPROM.get(KI_ADDR, pp.ki);
-  EEPROM.get(KD_ADDR, pp.kd);
-  EEPROM.get(OMIN_ADDR, pp.omin);
-  EEPROM.get(OMAX_ADDR, pp.omax);
-  if(pp.kp != pid_params.kp) EEPROM.put(KP_ADDR, pid_params.kp);
-  if(pp.ki != pid_params.ki) EEPROM.put(KI_ADDR, pid_params.ki);
-  if(pp.kd != pid_params.kd) EEPROM.put(KD_ADDR, pid_params.kd);
-  if(pp.omin != pid_params.omin) EEPROM.put(OMIN_ADDR, pid_params.omin);
-  if(pp.omax != pid_params.omax) EEPROM.put(OMAX_ADDR, pid_params.omax);
-
+  EEPROM.put(KP_ADDR, pid_params.kp);
+  EEPROM.put(KI_ADDR, pid_params.ki);
+  EEPROM.put(KD_ADDR, pid_params.kd);
+  EEPROM.put(OMIN_ADDR, pid_params.omin);
+  EEPROM.put(OMAX_ADDR, pid_params.omax);
+  EEPROM.put(HC_MINUS5_ADDR, heat_curve.hc_minus5);
+  EEPROM.put(HC_0_ADDR, heat_curve.hc_0);
+  EEPROM.put(HC_5_ADDR, heat_curve.hc_5);
+  EEPROM.put(HC_10_ADDR, heat_curve.hc_10);
+  /*PidParams pi;
   HC hc;
+  EEPROM.get(KP_ADDR, pi.kp);
+  EEPROM.get(KI_ADDR, pi.ki);
+  EEPROM.get(KD_ADDR, pi.kd);
+  EEPROM.get(OMIN_ADDR, pi.omin);
+  EEPROM.get(OMAX_ADDR, pi.omax);
   EEPROM.get(HC_MINUS5_ADDR, hc.hc_minus5);
   EEPROM.get(HC_0_ADDR, hc.hc_0);
   EEPROM.get(HC_5_ADDR, hc.hc_5);
   EEPROM.get(HC_10_ADDR, hc.hc_10);
-  if(hc.hc_minus5 != heat_curve.hc_minus5) EEPROM.put(KP_ADDR, heat_curve.hc_minus5);
-  if(hc.hc_0 != heat_curve.hc_0) EEPROM.put(KI_ADDR, heat_curve.hc_0);
-  if(hc.hc_5 != heat_curve.hc_5) EEPROM.put(KD_ADDR, heat_curve.hc_5);
-  if(hc.hc_10 != heat_curve.hc_10) EEPROM.put(OMIN_ADDR, heat_curve.hc_10);
+  Serial.println(pi.kp);
+  Serial.println(pi.ki);
+  Serial.println(pi.kd);
+  Serial.println(pi.omin);
+  Serial.println(pi.omax);
+  Serial.println(hc.hc_minus5);
+  Serial.println(hc.hc_0);
+  Serial.println(hc.hc_5);
+  Serial.println(hc.hc_10);*/
 }
