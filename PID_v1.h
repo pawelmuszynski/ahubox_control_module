@@ -44,11 +44,11 @@ class PID
     void SetTunings(float, float,       // * overload for specifying proportional mode
                     float, int);         	  
 
-	void SetControllerDirection(int);	  // * Sets the Direction, or "Action" of the controller. DIRECT
+	  void SetControllerDirection(int);	  // * Sets the Direction, or "Action" of the controller. DIRECT
 										  //   means the output will increase when error is positive. REVERSE
 										  //   means the opposite.  it's very unlikely that this will be needed
 										  //   once it is set in the constructor.
-    void SetSampleTime(int);              // * sets the frequency, in Milliseconds, with which 
+    void SetSampleTime(uint16_t);              // * sets the frequency, in Milliseconds, with which 
                                           //   the PID calculation is performed.  default is 100
 										  
 										  
@@ -63,9 +63,9 @@ class PID
   private:
 	void Initialize();
 	
-	float dispKp;				// * we'll hold on to the tuning parameters in user-entered 
-	float dispKi;				//   format for display purposes
-	float dispKd;				//
+	//float dispKp;				// * we'll hold on to the tuning parameters in user-entered 
+	//float dispKi;				//   format for display purposes
+	//float dispKd;				//
     
 	float kp;                  // * (P)roportional Tuning Parameter
   float ki;                  // * (I)ntegral Tuning Parameter
@@ -79,12 +79,11 @@ class PID
   uint16_t *mySetpoint;           //   PID, freeing the user from having to constantly tell us
                                   //   what these values are.  with pointers we'll just know.
 			  
-	unsigned long lastTime;
+	uint16_t lastTime;
 	float outputSum, lastInput;
 
-	unsigned long SampleTime;
-	float outMin, outMax;
+	uint16_t SampleTime;
+	uint8_t outMin, outMax;
 	bool inAuto, pOnE;
 };
 #endif
-

@@ -28,12 +28,12 @@ PID::PID(uint16_t* Input, uint8_t* Output, uint16_t* Setpoint,
     PID::SetOutputLimits(0, 255);				//default output limit corresponds to
 												//the arduino pwm limits
 
-    SampleTime = 100;							//default Controller Sample Time is 0.1 seconds
+    SampleTime = 30;							//default Controller Sample Time is 10 seconds
 
     PID::SetControllerDirection(ControllerDirection);
     PID::SetTunings(Kp, Ki, Kd, POn);
 
-    lastTime = millis()-SampleTime;
+    lastTime = millis()/1000-SampleTime;
 }
 
 /*Constructor (...)*********************************************************
@@ -58,8 +58,8 @@ PID::PID(uint16_t* Input, uint8_t* Output, uint16_t* Setpoint,
 bool PID::Compute()
 {
    if(!inAuto) return false;
-   unsigned long now = millis();
-   unsigned long timeChange = (now - lastTime);
+   uint16_t now = millis()/1000;
+   uint16_t timeChange = (now - lastTime);
    if(timeChange>=SampleTime)
    {
       /*Compute all the working error variables*/
@@ -106,12 +106,12 @@ void PID::SetTunings(float Kp, float Ki, float Kd, int POn)
    pOn = POn;
    pOnE = POn == P_ON_E;
 
-   dispKp = Kp; dispKi = Ki; dispKd = Kd;
+   //dispKp = Kp; dispKi = Ki; dispKd = Kd;
 
-   float SampleTimeInSec = ((float)SampleTime)/1000;
+   //float SampleTimeInSec = ((float)SampleTime)/1000;
    kp = Kp;
-   ki = Ki * SampleTimeInSec;
-   kd = Kd / SampleTimeInSec;
+   ki = Ki * SampleTime;
+   kd = Kd / SampleTime;
 
   if(controllerDirection ==REVERSE)
    {
@@ -129,9 +129,9 @@ void PID::SetTunings(float Kp, float Ki, float Kd){
 }
 
 /* SetSampleTime(...) *********************************************************
- * sets the period, in Milliseconds, at which the calculation is performed
+ * sets the period, in seconds, at which the calculation is performed
  ******************************************************************************/
-void PID::SetSampleTime(int NewSampleTime)
+void PID::SetSampleTime(uint16_t NewSampleTime)
 {
    if (NewSampleTime > 0)
    {
@@ -139,7 +139,7 @@ void PID::SetSampleTime(int NewSampleTime)
                       / (float)SampleTime;
       ki *= ratio;
       kd /= ratio;
-      SampleTime = (unsigned long)NewSampleTime;
+      SampleTime = NewSampleTime;
    }
 }
 
@@ -216,9 +216,9 @@ void PID::SetControllerDirection(int Direction)
  * functions query the internal state of the PID.  they're here for display
  * purposes.  this are the functions the PID Front-end uses for example
  ******************************************************************************/
-float PID::GetKp(){ return  dispKp; }
-float PID::GetKi(){ return  dispKi;}
-float PID::GetKd(){ return  dispKd;}
+float PID::GetKp(){ return  kp; }
+float PID::GetKi(){ return  ki / SampleTime;}
+float PID::GetKd(){ return  kd * SampleTime;}
 int PID::GetMode(){ return  inAuto ? AUTOMATIC : MANUAL;}
 int PID::GetDirection(){ return controllerDirection;}
 
