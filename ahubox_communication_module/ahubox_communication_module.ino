@@ -98,7 +98,7 @@ void loop() {
   timer.update();
 
   // ======== UART commands support ==========
-  char received = 0x00;
+/*  char received = 0x00;
   static char serial_buf[50];
   static uint8_t buf_index = 0;
   if (Serial.available()) {
@@ -113,12 +113,12 @@ void loop() {
       serial_buf[buf_index] = '\0';
     }
   }
-
+*/
 }
 
-void processCommand(char *buf) {
-  Serial.println(buf);
-}
+//void processCommand(char *buf) {
+//  Serial.println(buf);
+//}
 
 /*
 void processCommand(char *buf) {
@@ -219,12 +219,22 @@ void on60sec() {
   showValues(td, ed, pd);
 
   char buf[50];
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 117, ed.voltage / 10, ed.voltage % 10);
+  mqttClient.publish("domoticz/in", 0, false, buf);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 118, ed.current / 1000, ed.current % 1000);
+  mqttClient.publish("domoticz/in", 0, false, buf);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 116, ed.power / 10, ed.power % 10);
+  mqttClient.publish("domoticz/in", 0, false, buf);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 119, ed.pf / 100, ed.pf % 100);
+  mqttClient.publish("domoticz/in", 0, false, buf);
+
   snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 4, td.heat / 100, td.heat % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
   snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 6, td.ret / 100, td.ret % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
   snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01d.%02d\"}", 7, td.outside / 100, td.outside % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
+
   snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 114, pd.sv / 100, pd.sv % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
   snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%u\"}", 11, map(pd.output, 0, 255, 0, 100));
@@ -258,30 +268,6 @@ void checkEthernetConnection() {
       }
       connectedETH_last_state = false;
     }
-/*  if(!last_conn_status) {
-    Serial.println("last conn status = false");
-    eth.begin(mac);
-    eth.connected();
-    last_conn_status = true;
-  }
-  if(!eth.connected() && !last_conn_status) {
-    Serial.println("Ethernet connecting...");
-    last_conn_status = true;
-    eth.setDefault();
-    printIPInfo();
-    connectToMqtt();
-  }
-*/
-/*  if (eth.status() == 3 && !eth_last_status) {
-    Serial.println("Ethernet connected");
-    eth_last_status = true;
-  } else if (eth.status() == 7 && eth_last_status) {
-    Serial.println("Ethernet disconnected");
-    eth_last_status = false;  
-  } else {
-    Serial.println("Ethernet uknown status");
-    eth_last_status = false;
-  } */
 }
 
 void showValues(TempData td, EnergyData ed, PidData pd) {

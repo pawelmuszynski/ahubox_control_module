@@ -14,25 +14,28 @@
 #include <DallasTemperature.h>
 #include <Wire.h>
 #include <CRC8.h>
-//#include <OneButton.h>
-//#include "Timer.h"
 #include "PID_v1.h"
 #include "PZEM004Tv30.h"
 
-//#define CHECK_PERIOD 1000UL
 #define CHECK_PULSE_THRESHOLD 300  // 107/s = ~ 0.8 m^3 / h
 
-#define INTERRUPT_PIN 2
-#define DS_PIN 4
-#define PROG_DS_PIN 3
-#define HEAT_SWITCH_PIN 5
-#define PWM_PIN 6
-#define HEAT_DS_PROG_BUTTON 10
-#define RETURN_DS_PROG_BUTTON 11
-#define OUTSIDE_DS_PROG_BUTTON 12
-#define BUZZER_PIN LED_BUILTIN  //20
-#define SOFTSERIAL_RX_PIN 23
-#define SOFTSERIAL_TX_PIN 24
+// pins definition
+#define WATER_FLOW_PULSER_PIN 2  // INPUT
+#define SV_PWM_PIN 3  // PWM OUTPUT
+#define DS_PIN 4  // 1-wire master
+#define PROG_DS_PIN 5  // 1-wire master
+#define AUTO_MANUAL_BUTTON 6  // INPUT
+#define HEAT_ON_SWITCH_PIN 7  // OUTPUT
+#define WATER_PUMP_SWITCH_PIN 8  // OUTPUT
+#define ALARM_SIGNAL_PIN 9  // OUTPUT
+#define HEAT_DS_PROG_BUTTON 10  // INPUT
+#define RETURN_DS_PROG_BUTTON 11  // INPUT
+#define OUTSIDE_DS_PROG_BUTTON 12  // INPUT
+#define STATUS_LED LED_BUILTIN  // OUTPUT
+#define BUZZER_PIN LED_BUILTIN  //20 // OUTPUT
+#define DEFROST_SIGNAL_PIN 14  // INPUT
+#define SOFTSERIAL_RX_PIN 16  // INPUT
+#define SOFTSERIAL_TX_PIN 17  // OUTPUT
 
 // EEPROM addresses
 #define KP_ADDR 0x00  // to 0x03 (float)
@@ -56,6 +59,28 @@
 
 #define WIRE_SLAVE_ADDR 8
 #define WIRE_DATA_FRAME 0xAA // It identifies data frame (crc is not enough). It should be equal on both sides.
+
+const char starting_msg[]                PROGMEM = "--== STARTING ==--";
+const char started_msg[]                 PROGMEM = "--== STARTED ==-";
+const char setting_alarm_msg[]           PROGMEM = "ALARM! Setting alarm signal";
+const char switching_off_msg[]           PROGMEM = "ALARM! Switching off";
+const char crc_error_msg[]               PROGMEM = "CRC error!";
+const char programming_heat_ds_msg[]     PROGMEM = "Programming Heat DS";
+const char programming_return_ds_msg[]   PROGMEM = "Programming Return DS";
+const char programming_outside_ds_msg[]  PROGMEM = "Programming Outside DS";
+const char ok_msg[]                      PROGMEM = "OK!";
+const char heating_curve_header_msg[]    PROGMEM = "-= Heating curve =-";
+const char pid_params_header_msg[]       PROGMEM = "-= PID =-";
+const char get_domoticz_values_cmd_msg[] PROGMEM = "get domoticz values cmd";
+const char get_pid_cmd_msg[]             PROGMEM = "get pid cmd";
+const char get_hc_cmd_msg[]              PROGMEM = "get hc cmd";
+const char get_temp_cmd_msg[]            PROGMEM = "get temp cmd";
+const char get_energy_cmd_msg[]          PROGMEM = "get energy cmd";
+const char set_pid_params_msg[]          PROGMEM = "set pid params";
+const char set_hc_params_msg[]           PROGMEM = "set hc params";
+const char save_eeprom_msg[]             PROGMEM = "save data to EEPROM";
+const char on_60_sec_header_msg[]        PROGMEM = "====== on 60 sec ======";
+const char get_ds_address_msg[]          PROGMEM = "Get DS address";
 
 /*
 const char line00[] PROGMEM = "Available commands:";
@@ -122,11 +147,9 @@ PidData pid_data;
 TempData temp_avg;
 TempData temp_probes[n_probes];
 HC heat_curve;
-//OneButton heat_ds_prog_button, return_ds_prog_button, outside_ds_prog_button;
 
 uint8_t timer_start_millis;
 uint8_t loop_counter = 15;
-
 
 bool ds_prog_button_last_state = HIGH;
 bool ds_prog_button_current_state;
@@ -143,8 +166,6 @@ uint8_t button_released_time = 0;
 const uint8_t ds_precision = 12;
 uint8_t heat_ds[8], return_ds[8], outside_ds[8];
 
-//Timer timer;
-//PZEM004Tv30 pzem(Serial2);
 OneWire ow(DS_PIN);
 DallasTemperature ds(&ow);
 
@@ -160,30 +181,30 @@ uint8_t wire_cmd;
 
 void printPIDParams() {
   char buf[20];
-  Serial.println("- PID -");
-  sprintf(buf, "kp = %f", pid_params.kp);
+  Serial.println(pid_params_header_msg);
+  snprintf(buf, sizeof(buf), "kp = %f", pid_params.kp);
   Serial.println(buf);
-  sprintf(buf, "ki = %f", pid_params.ki);
+  snprintf(buf, sizeof(buf), "ki = %f", pid_params.ki);
   Serial.println(buf);
-  sprintf(buf, "kd = %f", pid_params.kd);
+  snprintf(buf, sizeof(buf), "kd = %f", pid_params.kd);
   Serial.println(buf);
-  sprintf(buf, "pid_min = %uud", pid_params.omin);
+  snprintf(buf, sizeof(buf), "pid_min = %uud", pid_params.omin);
   Serial.println(buf);
-  sprintf(buf, "pid_max = %uud", pid_params.omax);
+  snprintf(buf, sizeof(buf), "pid_max = %uud", pid_params.omax);
   Serial.println(buf);
   Serial.println();
 }
 
 void printHCParams() {
   char buf[20];
-  Serial.println("- Heating curve -");
-  sprintf(buf, "hc_minus5 = %d", heat_curve.hc_minus5);
+  Serial.println(heating_curve_header_msg);
+  snprintf(buf, sizeof(buf), "hc_minus5 = %d", heat_curve.hc_minus5);
   Serial.println(buf);
-  sprintf(buf, "hc_0 = %d", heat_curve.hc_0);
+  snprintf(buf, sizeof(buf), "hc_0 = %d", heat_curve.hc_0);
   Serial.println(buf);
-  sprintf(buf, "hc_5 = %d", heat_curve.hc_5);
+  snprintf(buf, sizeof(buf), "hc_5 = %d", heat_curve.hc_5);
   Serial.println(buf);
-  sprintf(buf, "hc_10 = %d", heat_curve.hc_10);
+  snprintf(buf, sizeof(buf), "hc_10 = %d", heat_curve.hc_10);
   Serial.println(buf);
   Serial.println();
 }
@@ -519,32 +540,31 @@ void processCommand(char *buf) {
 
 void setup() {
   Serial.begin(9600);
-  Serial.println("= STARTING =");
+  Serial.println(starting_msg);
 
-  pinMode(INTERRUPT_PIN, INPUT_PULLUP);
-  pinMode(HEAT_SWITCH_PIN, OUTPUT);
-  pinMode(PWM_PIN, OUTPUT);
-  digitalWrite(HEAT_SWITCH_PIN, LOW);
-  attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), onPulse, FALLING);
+  digitalWrite(ALARM_SIGNAL_PIN, HIGH);
+  pinMode(ALARM_SIGNAL_PIN, OUTPUT);
 
+  digitalWrite(WATER_PUMP_SWITCH_PIN, LOW);
+  pinMode(WATER_PUMP_SWITCH_PIN, OUTPUT);
+
+  pinMode(WATER_FLOW_PULSER_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(WATER_FLOW_PULSER_PIN), onPulse, FALLING);
+
+  digitalWrite(HEAT_ON_SWITCH_PIN, LOW);
+  pinMode(HEAT_ON_SWITCH_PIN, OUTPUT);
+  pinMode(SV_PWM_PIN, OUTPUT);
+
+  pinMode(AUTO_MANUAL_BUTTON, INPUT_PULLUP);
   pinMode(HEAT_DS_PROG_BUTTON, INPUT_PULLUP);
   pinMode(RETURN_DS_PROG_BUTTON, INPUT_PULLUP);
   pinMode(OUTSIDE_DS_PROG_BUTTON, INPUT_PULLUP);
+  pinMode(DEFROST_SIGNAL_PIN, INPUT_PULLUP);
 
+  digitalWrite(STATUS_LED, HIGH);
+  pinMode(STATUS_LED, OUTPUT);
   digitalWrite(BUZZER_PIN, HIGH);
   pinMode(BUZZER_PIN, OUTPUT);
-
-  //heat_ds_prog_button.setup(HEAT_DS_PROG_BUTTON);
-  //return_ds_prog_button.setup(RETURN_DS_PROG_BUTTON);
-  //outside_ds_prog_button.setup(OUTSIDE_DS_PROG_BUTTON);
-
-  //heat_ds_prog_button.setPressMs(3000);
-  //return_ds_prog_button.setPressMs(3000);
-  //outside_ds_prog_button.setPressMs(3000);
-
-  //heat_ds_prog_button.attachLongPressStart(programHeatDS);
-  //return_ds_prog_button.attachLongPressStart(programReturnDS);
-  //outside_ds_prog_button.attachLongPressStart(programOutsideDS);
 
   // ====== Heating curve ======
   EEPROM.get(HC_MINUS5_ADDR, heat_curve.hc_minus5);
@@ -606,7 +626,7 @@ void setup() {
   //timer.every(5000, flowAlarmCheck);
   timer_start_millis = millis()/1000;
 
-  Serial.println("= STARTED =");
+  Serial.println(started_msg);
 }
 
 void loop() {
@@ -633,10 +653,7 @@ void loop() {
     }
   } */
 
-  if(alarm_flag) {
-    digitalWrite(HEAT_SWITCH_PIN, HIGH);
-    //digitalWrite(LED_BUILTIN, HIGH);
-  }
+  if(alarm_flag) onAlarm();
 
   if((uint8_t)((uint8_t)(millis()/1000) - timer_start_millis) >= 4) {
     timer_start_millis = millis()/1000;
@@ -746,10 +763,10 @@ void on4Sec() {
 }
 
 void on60Sec() {
-  Serial.println("====== ON 60 sec ======");
+  Serial.println(on_60_sec_header_msg);
   avgCalcAll();
   pid_data.sv = getHCValue(heat_curve, temp_avg.outside);
-  analogWrite(PWM_PIN, pid_data.output);
+  analogWrite(SV_PWM_PIN, pid_data.output);
   showValues();
 }
 
@@ -784,9 +801,9 @@ void wireRespondDomoticzValues() {
   Wire.write((byte *)&pid_data, sizeof(pid_data));
   Wire.write(&wire_crc, sizeof(wire_crc));
 
-  Serial.println("=======================");
-  Serial.print("CRC: ");
-  Serial.println(wire_crc);
+  //Serial.println("=======================");
+  //Serial.print("CRC: ");
+  //Serial.println(wire_crc);
 }
 
 void wireRespondPidParams() {
@@ -838,43 +855,43 @@ void onWireResponseRequest() {
 }
 
 void onWireReceive(int bytes) {
-  Serial.print("WIRE RECEIVE ");
-  Serial.print(bytes);
-  Serial.println(" bytes.");
+  char buf[25];
+  snprintf(buf, sizeof(buf), "Wire received %d bytes.", bytes);
+  Serial.println(buf);
   if(Wire.available()) wire_cmd = Wire.read();
-  Serial.print("Received cmd code: ");
-  Serial.println(wire_cmd);
+  snprintf(buf, sizeof(buf), "Received cmd code: %hhu", wire_cmd);
+  Serial.println(buf);
   switch (wire_cmd) {
     case 0x01:
-      Serial.println("get domoticz values cmd");
+      Serial.println(get_domoticz_values_cmd_msg);
       break;
     case 0x02:
-      Serial.println("get pid cmd");
+      Serial.println(get_pid_cmd_msg);
       break;
     case 0x03:
-      Serial.println("get hc cmd");
+      Serial.println(get_hc_cmd_msg);
       break;
     case 0x04:
-      Serial.println("get temp cmd");
+      Serial.println(get_temp_cmd_msg);
       break;
     case 0x05:
-      Serial.println("get energy cmd");
+      Serial.println(get_energy_cmd_msg);
       break;
 
     case 0x12:
-      Serial.println("set pid params");
+      Serial.println(set_pid_params_msg);
       if(Wire.available()) Wire.readBytes((byte *)&pid_params, sizeof(pid_params));
       pid.SetTunings(pid_params.kp, pid_params.ki, pid_params.kd);
       pid.SetOutputLimits(pid_params.omin, pid_params.omax);
       printPIDParams();
       break;
     case 0x13:
-      Serial.println("set hc params");
+      Serial.println(set_hc_params_msg);
       if(Wire.available()) Wire.readBytes((byte *)&heat_curve, sizeof(heat_curve));
       printHCParams();
       break;
     case 0x20:
-      Serial.println("save data to EEPROM");
+      Serial.println(save_eeprom_msg);
       saveDataToEEPROM();
   }
 }
@@ -912,7 +929,7 @@ void saveDataToEEPROM() {
 }
 
 bool getDSAddress(uint8_t *ds_addr) {
-  Serial.println("Get DS address");
+  Serial.println(get_ds_address_msg);
   uint8_t addr[8];
   OneWire prog_ow(PROG_DS_PIN);
   prog_ow.search(addr);
@@ -924,37 +941,48 @@ bool getDSAddress(uint8_t *ds_addr) {
 }
 
 void programHeatDS() {
-  //Serial.println("Programing Heat DS");
+  Serial.println(programming_heat_ds_msg);
   if(getDSAddress(heat_ds)) {
     EEPROM.put(HEAT_DS_ADDR, heat_ds);
-    Serial.println("OK");
+    Serial.println(ok_msg);
     beepOK = true;
   } else {
-    Serial.println("CRC error");
+    Serial.println(crc_error_msg);
     beepNOK = true;
   }
 }
 
 void programReturnDS() {
-  //Serial.println("Programing Return DS");
+  Serial.println(programming_return_ds_msg);
   if(getDSAddress(return_ds)) {
     EEPROM.put(RETURN_DS_ADDR, return_ds);
-    Serial.println("OK");
+    Serial.println(ok_msg);
     beepOK = true;
   } else {
-    Serial.println("CRC error");
+    Serial.println(crc_error_msg);
     beepNOK = true;
   }
 }
 
 void programOutsideDS() {
-  //Serial.println("Programing Outside DS");
+  Serial.println(programming_outside_ds_msg);
   if(getDSAddress(outside_ds)) {
     EEPROM.put(OUTSIDE_DS_ADDR, outside_ds);
-    Serial.println("OK");
+    Serial.println(ok_msg);
     beepOK = true;
   } else {
-    Serial.println("CRC error");
+    Serial.println(crc_error_msg);
     beepNOK = true;
+  }
+}
+
+void onAlarm() {
+  if(!digitalRead(HEAT_ON_SWITCH_PIN)) {
+    digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
+    Serial.println(switching_off_msg);
+  }
+  if(!digitalRead(ALARM_SIGNAL_PIN)) {
+    digitalWrite(ALARM_SIGNAL_PIN, LOW);
+    Serial.println(setting_alarm_msg);
   }
 }
