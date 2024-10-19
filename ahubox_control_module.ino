@@ -13,13 +13,14 @@
 #include <EEPROM.h>
 #include <DallasTemperature.h>
 #include <Wire.h>
+#include <CRC8.h>
 //#include <OneButton.h>
 //#include "Timer.h"
 #include "PID_v1.h"
 #include "PZEM004Tv30.h"
 
 //#define CHECK_PERIOD 1000UL
-#define CHECK_PULSE_THRESHOLD 500  // 107/s = ~ 0.8 m^3 / h
+#define CHECK_PULSE_THRESHOLD 300  // 107/s = ~ 0.8 m^3 / h
 
 #define INTERRUPT_PIN 2
 #define DS_PIN 4
@@ -54,6 +55,8 @@
 #define HC_10_ADDR 0x46      // to 0x47 (uint16_t)
 
 #define WIRE_SLAVE_ADDR 8
+#define WIRE_DATA_FRAME 0xAA // It identifies data frame (crc is not enough). It should be equal on both sides.
+
 /*
 const char line00[] PROGMEM = "Available commands:";
 const char line01[] PROGMEM = "  help - this help";
@@ -106,12 +109,6 @@ struct __attribute__((aligned(4))) PidData {
 struct TempData {
   uint16_t heat, ret;
   int16_t outside;
-};
-
-struct WireData {
-  TempData td;
-  EnergyData ed;
-  PidData pd;
 };
 
 struct HC {
@@ -692,22 +689,22 @@ void loop() {
   if(beepOK) {
     if(!beep_last_state) beep_start_millis = millis() / 100;
     digitalWrite(BUZZER_PIN, LOW);
-    Serial.println("beep");
+    //Serial.println("beep");
 
     if((uint8_t)((uint8_t)(millis()/100) - beep_start_millis) >= 2 ) {
       beepOK = false;
       digitalWrite(BUZZER_PIN, HIGH);
-      Serial.println("stop");
+      //Serial.println("stop");
     }
   }
   if(beepNOK) {
     if(!beep_last_state) beep_start_millis = millis() / 100;
     digitalWrite(BUZZER_PIN, LOW);
-    Serial.println("beep");
+    //Serial.println("beep");
     if((uint8_t)((uint8_t)(millis()/100) - beep_start_millis) >= 10 ) {
       beepNOK = false;
       digitalWrite(BUZZER_PIN, HIGH);
-      Serial.println("stop");
+      //Serial.println("stop");
     }
   }
   beep_last_state = beepOK || beepNOK;
@@ -771,16 +768,25 @@ void flowAlarmCheck() {
 }
 
 void wireRespondDomoticzValues() {
-  Serial.println("respond domoticz values");
+  Serial.println("Respond with domoticz values");
   avgCalcAll();
-  WireData wd;
-  wd.td = temp_avg;
-  wd.ed = energy_avg;
-  wd.pd = pid_data;
-  Wire.write((byte *)&wd, sizeof(wd));
+
+  CRC8 crc;
+  crc.add(WIRE_DATA_FRAME);
+  crc.add((uint8_t *) &temp_avg, sizeof(temp_avg));
+  crc.add((uint8_t *) &energy_avg, sizeof(energy_avg));
+  crc.add((uint8_t *) &pid_data, sizeof(pid_data));
+  uint8_t wire_crc = crc.calc();
+
+  Wire.write(WIRE_DATA_FRAME);
+  Wire.write((byte *)&temp_avg, sizeof(temp_avg));
+  Wire.write((byte *)&energy_avg, sizeof(energy_avg));
+  Wire.write((byte *)&pid_data, sizeof(pid_data));
+  Wire.write(&wire_crc, sizeof(wire_crc));
+
   Serial.println("=======================");
-  Serial.println(wd.pd.sv);
-  Serial.println(wd.pd.output);
+  Serial.print("CRC: ");
+  Serial.println(wire_crc);
 }
 
 void wireRespondPidParams() {

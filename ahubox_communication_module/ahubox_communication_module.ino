@@ -1,7 +1,7 @@
 #include <Timer.h>
 #include <Wire.h>
 #include <ENC28J60lwIP.h>
-
+#include <CRC8.h>
 #include <AsyncMqtt_Generic.h>
 
 #define SLAVE_ADDR 8
@@ -10,20 +10,20 @@
 
 #define MQTT_CHECK_INTERVAL_MS        2000
 #define MQTT_PORT       1883
-#define MQTT_CLIENT_ID  "pompa_ciepla"
-#define MQTT_TOPIC      "/topic/test"     // You can change
+#define MQTT_CLIENT_ID  "pompa_ciepla_dev"
 //#define MQTT_WILL_TOPIC "/topic/test"     // You can change
 //#define MQTT_WILL_MSG   "I am leaving..." // You can change
 #define MQTT_SERVER     "10.0.2.10"
 #define PAYLOAD_SIZE    50
 
+#define WIRE_DATA_FRAME 0xAA // It identifies data frame (crc is not enough). It should be equal on both sides.
 
 Timer timer;
 ENC28J60lwIP eth(CSPIN);
 
-const char *PubTopic = "test/pompa_ciepla";
-const char *SettingsTopicIn = "heat_pump/settings/in";
-const char *SettingsTopicOut = "heat_pump/settings/out";
+const char *PubTopic = "test/pompa_ciepla_dev";
+const char *SettingsTopicIn = "heat_pump_dev/settings/in";
+const char *SettingsTopicOut = "heat_pump_dev/settings/out";
 
 AsyncMqttClient mqttClient;
 bool connectedMQTT = false;
@@ -47,25 +47,13 @@ struct TempData {
   int16_t outside;
 };
 
-struct WireData {
-  TempData td;
-  EnergyData ed;
-  PidData pd;
-};
-
 struct HC {
   uint16_t hc_minus5, hc_0, hc_5, hc_10;
 };
 
-
-//struct WireData {
-//  uint16_t voltage_avg, current_avg, power_avg, energy_avg, pf_avg;
-//  uint16_t pid_output, pid_sv;
-//  uint16_t heat_temp_avg, return_temp_avg;
-//  int16_t outside_temp_avg;
-//};
-
-WireData wd;
+TempData temp_data;
+EnergyData energy_data;
+PidData pid_data;
 
 byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
 
@@ -195,28 +183,52 @@ void on60sec() {
   Wire.write(0x01); // get values command
   Wire.endTransmission();
 
-  Wire.requestFrom(SLAVE_ADDR, sizeof(wd));
-  Wire.readBytes((byte*) &wd, sizeof(wd));
-  showValues();
+  TempData td;
+  EnergyData ed;
+  PidData pd;
+  uint8_t wire_crc;
+  uint8_t frame_type;
 
-  //mqttClient.publish(PubTopic, 0, true, "ESP8266_Ethernet Test1");
+  Wire.requestFrom(SLAVE_ADDR, sizeof(frame_type) + sizeof(td) + sizeof(ed) + sizeof(pd) + sizeof(wire_crc)); // request all data
+
+  if(!Wire.readBytes(&frame_type, sizeof(frame_type))) {
+    Serial.println("Error: Empty Domoticz Data frame received");
+    return;
+  }
+  if(frame_type != WIRE_DATA_FRAME) {
+    Serial.println("Error: Wrong frame header byte received in Domoticz Data frame");
+    return;
+  }
+
+  Wire.readBytes((byte*) &td, sizeof(td));
+  Wire.readBytes((byte*) &ed, sizeof(ed));
+  Wire.readBytes((byte*) &pd, sizeof(pd));
+  Wire.readBytes(&wire_crc, sizeof(wire_crc));
+
+  CRC8 crc;
+  crc.add(&frame_type, sizeof(frame_type));
+  crc.add((uint8_t *)&td, sizeof(td));
+  crc.add((uint8_t *)&ed, sizeof(ed));
+  crc.add((uint8_t *)&pd, sizeof(pd));
+
+  if(crc.calc() != wire_crc) {
+    Serial.println("Error: Wrong CRC received in Domoticz Data frame");
+    return;
+  }
+
+  showValues(td, ed, pd);
+
   char buf[50];
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 19, wd.td.heat / 100, wd.td.heat % 100);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 4, td.heat / 100, td.heat % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 20, wd.td.ret / 100, wd.td.ret % 100);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 6, td.ret / 100, td.ret % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01d.%02d\"}", 2, wd.td.outside / 100, wd.td.outside % 100);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01d.%02d\"}", 7, td.outside / 100, td.outside % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 3, wd.pd.sv / 100, wd.pd.sv % 100);
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 114, pd.sv / 100, pd.sv % 100);
   mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%u\"}", 115, map(wd.pd.output, 0, 255, 0, 100));
+  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%u\"}", 11, map(pd.output, 0, 255, 0, 100));
   mqttClient.publish("domoticz/in", 0, false, buf);
-
-  Serial.println("-----");
-  Serial.println(wd.pd.sv);
-  Serial.println(wd.pd.output);
-  Serial.println("-----");
-
 }
 
 void printIPInfo() {
@@ -272,25 +284,25 @@ void checkEthernetConnection() {
   } */
 }
 
-void showValues() {
+void showValues(TempData td, EnergyData ed, PidData pd) {
   char buf[30];
-  snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", wd.ed.voltage / 10, wd.ed.voltage % 10);
+  snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", ed.voltage / 10, ed.voltage % 10);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "Current: %01u.%03u A", wd.ed.current / 1000, wd.ed.current % 1000);
+  snprintf(buf, sizeof(buf), "Current: %01u.%03u A", ed.current / 1000, ed.current % 1000);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "Power: %01u.%01u W", wd.ed.power / 10, wd.ed.power % 10);
+  snprintf(buf, sizeof(buf), "Power: %01u.%01u W", ed.power / 10, ed.power % 10);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "PF: %01u.%02u", wd.ed.pf / 100, wd.ed.pf % 100);
+  snprintf(buf, sizeof(buf), "PF: %01u.%02u", ed.pf / 100, ed.pf % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", wd.td.heat / 100, wd.td.heat % 100);
+  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", td.heat / 100, td.heat % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", wd.td.ret / 100, wd.td.ret % 100);
+  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", td.ret / 100, td.ret % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", wd.td.outside / 100, wd.td.outside % 100);
+  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", td.outside / 100, td.outside % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", wd.pd.sv / 100, wd.pd.sv % 100);
+  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", pd.sv / 100, pd.sv % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "set power: %d (%d%%)", wd.pd.output, map(wd.pd.output, 0, 255, 0, 100));
+  snprintf(buf, sizeof(buf), "set power: %d (%d%%)", pd.output, map(pd.output, 0, 255, 0, 100));
   Serial.println(buf);
 }
 
@@ -433,7 +445,7 @@ void processGet(char *param) {
     PidParams pid_params;
     Wire.requestFrom(SLAVE_ADDR, sizeof(pid_params));
     Wire.readBytes((byte*) &pid_params, sizeof(pid_params));
-    snprintf(buf, sizeof(buf), "%.2f %.2f %.2f %u %u", pid_params.kp, pid_params.ki, pid_params.kd, pid_params.omin, pid_params.omax);
+    snprintf(buf, sizeof(buf), "%.2f %.2f %.2f %hhu %hhu", pid_params.kp, pid_params.ki, pid_params.kd, pid_params.omin, pid_params.omax);
   }
   else if(!strcmp(param, "hc")) {
     Serial.println("Calling for hc");
@@ -451,10 +463,10 @@ void processGet(char *param) {
     Wire.beginTransmission(SLAVE_ADDR);
     Wire.write(0x04); // get temp
     Wire.endTransmission();
-    TempData temp;
-    Wire.requestFrom(SLAVE_ADDR, sizeof(temp));
-    Wire.readBytes((byte*) &temp, sizeof(temp));
-    snprintf(buf, sizeof(buf), "%01u.%02u %01u.%02u %01d.%02d", temp.heat / 100, temp.heat % 100, temp.ret / 100, temp.ret % 100, temp.outside / 100, temp.outside % 100);
+    TempData td;
+    Wire.requestFrom(SLAVE_ADDR, sizeof(td));
+    Wire.readBytes((byte*) &td, sizeof(td));
+    snprintf(buf, sizeof(buf), "%01u.%02u %01u.%02u %01d.%02d", td.heat / 100, td.heat % 100, td.ret / 100, td.ret % 100, td.outside / 100, td.outside % 100);
   }
   else if(!strcmp(param, "energy")) {
     Serial.println("Calling for energy");
