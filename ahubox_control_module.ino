@@ -60,28 +60,6 @@
 #define WIRE_SLAVE_ADDR 8
 #define WIRE_DATA_FRAME 0xAA // It identifies data frame (crc is not enough). It should be equal on both sides.
 
-const char starting_msg[]                PROGMEM = "--== STARTING ==--";
-const char started_msg[]                 PROGMEM = "--== STARTED ==-";
-const char setting_alarm_msg[]           PROGMEM = "ALARM! Setting alarm signal";
-const char switching_off_msg[]           PROGMEM = "ALARM! Switching off";
-const char crc_error_msg[]               PROGMEM = "CRC error!";
-const char programming_heat_ds_msg[]     PROGMEM = "Programming Heat DS";
-const char programming_return_ds_msg[]   PROGMEM = "Programming Return DS";
-const char programming_outside_ds_msg[]  PROGMEM = "Programming Outside DS";
-const char ok_msg[]                      PROGMEM = "OK!";
-const char heating_curve_header_msg[]    PROGMEM = "-= Heating curve =-";
-const char pid_params_header_msg[]       PROGMEM = "-= PID =-";
-const char get_domoticz_values_cmd_msg[] PROGMEM = "get domoticz values cmd";
-const char get_pid_cmd_msg[]             PROGMEM = "get pid cmd";
-const char get_hc_cmd_msg[]              PROGMEM = "get hc cmd";
-const char get_temp_cmd_msg[]            PROGMEM = "get temp cmd";
-const char get_energy_cmd_msg[]          PROGMEM = "get energy cmd";
-const char set_pid_params_msg[]          PROGMEM = "set pid params";
-const char set_hc_params_msg[]           PROGMEM = "set hc params";
-const char save_eeprom_msg[]             PROGMEM = "save data to EEPROM";
-const char on_60_sec_header_msg[]        PROGMEM = "====== on 60 sec ======";
-const char get_ds_address_msg[]          PROGMEM = "Get DS address";
-
 /*
 const char line00[] PROGMEM = "Available commands:";
 const char line01[] PROGMEM = "  help - this help";
@@ -181,7 +159,7 @@ uint8_t wire_cmd;
 
 void printPIDParams() {
   char buf[20];
-  Serial.println(pid_params_header_msg);
+  Serial.println(F("-= PID =-"));
   snprintf(buf, sizeof(buf), "kp = %f", pid_params.kp);
   Serial.println(buf);
   snprintf(buf, sizeof(buf), "ki = %f", pid_params.ki);
@@ -197,7 +175,7 @@ void printPIDParams() {
 
 void printHCParams() {
   char buf[20];
-  Serial.println(heating_curve_header_msg);
+  Serial.println(F("-= Heating curve =-"));
   snprintf(buf, sizeof(buf), "hc_minus5 = %d", heat_curve.hc_minus5);
   Serial.println(buf);
   snprintf(buf, sizeof(buf), "hc_0 = %d", heat_curve.hc_0);
@@ -540,7 +518,7 @@ void processCommand(char *buf) {
 
 void setup() {
   Serial.begin(9600);
-  Serial.println(starting_msg);
+  Serial.println(F("--== STARTING ==--"));
 
   digitalWrite(ALARM_SIGNAL_PIN, HIGH);
   pinMode(ALARM_SIGNAL_PIN, OUTPUT);
@@ -626,7 +604,7 @@ void setup() {
   //timer.every(5000, flowAlarmCheck);
   timer_start_millis = millis()/1000;
 
-  Serial.println(started_msg);
+  Serial.println(F("--== STARTED ==-"));
 }
 
 void loop() {
@@ -763,7 +741,7 @@ void on4Sec() {
 }
 
 void on60Sec() {
-  Serial.println(on_60_sec_header_msg);
+  Serial.println(F("====== on 60 sec ======"));
   avgCalcAll();
   pid_data.sv = getHCValue(heat_curve, temp_avg.outside);
   analogWrite(SV_PWM_PIN, pid_data.output);
@@ -863,35 +841,35 @@ void onWireReceive(int bytes) {
   Serial.println(buf);
   switch (wire_cmd) {
     case 0x01:
-      Serial.println(get_domoticz_values_cmd_msg);
+      Serial.println(F("get domoticz values cmd received"));
       break;
     case 0x02:
-      Serial.println(get_pid_cmd_msg);
+      Serial.println(F("get pid cmd received"));
       break;
     case 0x03:
-      Serial.println(get_hc_cmd_msg);
+      Serial.println(F("get hc cmd received"));
       break;
     case 0x04:
-      Serial.println(get_temp_cmd_msg);
+      Serial.println(F("get temp cmd received"));
       break;
     case 0x05:
-      Serial.println(get_energy_cmd_msg);
+      Serial.println(F("get energy cmd received"));
       break;
 
     case 0x12:
-      Serial.println(set_pid_params_msg);
+      Serial.println(F("set pid params"));
       if(Wire.available()) Wire.readBytes((byte *)&pid_params, sizeof(pid_params));
       pid.SetTunings(pid_params.kp, pid_params.ki, pid_params.kd);
       pid.SetOutputLimits(pid_params.omin, pid_params.omax);
       printPIDParams();
       break;
     case 0x13:
-      Serial.println(set_hc_params_msg);
+      Serial.println(F("set hc params"));
       if(Wire.available()) Wire.readBytes((byte *)&heat_curve, sizeof(heat_curve));
       printHCParams();
       break;
     case 0x20:
-      Serial.println(save_eeprom_msg);
+      Serial.println(F("Saving data to EEPROM"));
       saveDataToEEPROM();
   }
 }
@@ -929,7 +907,7 @@ void saveDataToEEPROM() {
 }
 
 bool getDSAddress(uint8_t *ds_addr) {
-  Serial.println(get_ds_address_msg);
+  Serial.println(F("Get DS address"));
   uint8_t addr[8];
   OneWire prog_ow(PROG_DS_PIN);
   prog_ow.search(addr);
@@ -941,37 +919,37 @@ bool getDSAddress(uint8_t *ds_addr) {
 }
 
 void programHeatDS() {
-  Serial.println(programming_heat_ds_msg);
+  Serial.println(F("Programming Heat DS"));
   if(getDSAddress(heat_ds)) {
     EEPROM.put(HEAT_DS_ADDR, heat_ds);
-    Serial.println(ok_msg);
+    Serial.println(F("OK!"));
     beepOK = true;
   } else {
-    Serial.println(crc_error_msg);
+    Serial.println(F("CRC error!"));
     beepNOK = true;
   }
 }
 
 void programReturnDS() {
-  Serial.println(programming_return_ds_msg);
+  Serial.println(F("Programming Return DS"));
   if(getDSAddress(return_ds)) {
     EEPROM.put(RETURN_DS_ADDR, return_ds);
-    Serial.println(ok_msg);
+    Serial.println(F("OK!"));
     beepOK = true;
   } else {
-    Serial.println(crc_error_msg);
+    Serial.println(F("CRC error!"));
     beepNOK = true;
   }
 }
 
 void programOutsideDS() {
-  Serial.println(programming_outside_ds_msg);
+  Serial.println(F("Programming Outside DS"));
   if(getDSAddress(outside_ds)) {
     EEPROM.put(OUTSIDE_DS_ADDR, outside_ds);
-    Serial.println(ok_msg);
+    Serial.println(F("OK!"));
     beepOK = true;
   } else {
-    Serial.println(crc_error_msg);
+    Serial.println(F("CRC error!"));
     beepNOK = true;
   }
 }
@@ -979,10 +957,10 @@ void programOutsideDS() {
 void onAlarm() {
   if(!digitalRead(HEAT_ON_SWITCH_PIN)) {
     digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
-    Serial.println(switching_off_msg);
+    Serial.println(F("ALARM! Switching off"));
   }
   if(!digitalRead(ALARM_SIGNAL_PIN)) {
     digitalWrite(ALARM_SIGNAL_PIN, LOW);
-    Serial.println(setting_alarm_msg);
+    Serial.println(F("ALARM! Setting alarm signal"));
   }
 }
