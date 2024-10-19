@@ -8,15 +8,15 @@
 #define CSPIN 16
 //#define ETH_HOSTNAME "pompa_ciepla"
 
-#define MQTT_CHECK_INTERVAL_MS        2000
-#define MQTT_PORT       1883
-#define MQTT_CLIENT_ID  "pompa_ciepla_dev"
+#define MQTT_CHECK_INTERVAL_MS 2000
+#define MQTT_PORT 1883
+#define MQTT_CLIENT_ID "pompa_ciepla_dev"
 //#define MQTT_WILL_TOPIC "/topic/test"     // You can change
 //#define MQTT_WILL_MSG   "I am leaving..." // You can change
-#define MQTT_SERVER     "10.0.2.10"
-#define PAYLOAD_SIZE    50
+#define MQTT_SERVER "10.0.2.10"
+#define PAYLOAD_SIZE 50
 
-#define WIRE_DATA_FRAME 0xAA // It identifies data frame (crc is not enough). It should be equal on both sides.
+#define WIRE_DATA_FRAME 0xAA  // It identifies data frame (crc is not enough). It should be equal on both sides.
 
 Timer timer;
 ENC28J60lwIP eth(CSPIN);
@@ -55,13 +55,13 @@ TempData temp_data;
 EnergyData energy_data;
 PidData pid_data;
 
-byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
+byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02 };
 
 void setup() {
   delay(1000);
   Wire.begin();
   Serial.begin(115200);
-  Serial.println("\n\n================== START ====================");
+  Serial.println(F("\n\n================== START ===================="));
   Serial.print(ESP.getFullVersion());
   Serial.println();
   Serial.print(ESP.getCoreVersion());
@@ -74,7 +74,7 @@ void setup() {
 
   eth.setDefault();
   //eth.setHostname(ETH_HOSTNAME);
-  if (!eth.begin(mac)) Serial.println("ERROR: No ENC28J60 Ethernet hardware module.");
+  if (!eth.begin(mac)) Serial.println(F("ERROR: No ENC28J60 Ethernet hardware module."));
   //else last_conn_status = true;
 
   //timer.every(10000, on10sec);
@@ -98,7 +98,7 @@ void loop() {
   timer.update();
 
   // ======== UART commands support ==========
-/*  char received = 0x00;
+  /*  char received = 0x00;
   static char serial_buf[50];
   static uint8_t buf_index = 0;
   if (Serial.available()) {
@@ -175,12 +175,12 @@ void on10sec() {
 */
 
 void on60sec() {
-  Serial.println("---------------------");
-  Serial.println("Wire get values");
-  Serial.println("---------------------");
+  Serial.println(F("---------------------"));
+  Serial.println(F("Wire get values"));
+  Serial.println(F("---------------------"));
 
   Wire.beginTransmission(SLAVE_ADDR);
-  Wire.write(0x01); // get values command
+  Wire.write(0x01);  // get values command
   Wire.endTransmission();
 
   TempData td;
@@ -189,20 +189,20 @@ void on60sec() {
   uint8_t wire_crc;
   uint8_t frame_type;
 
-  Wire.requestFrom(SLAVE_ADDR, sizeof(frame_type) + sizeof(td) + sizeof(ed) + sizeof(pd) + sizeof(wire_crc)); // request all data
+  Wire.requestFrom(SLAVE_ADDR, sizeof(frame_type) + sizeof(td) + sizeof(ed) + sizeof(pd) + sizeof(wire_crc));  // request all data
 
-  if(!Wire.readBytes(&frame_type, sizeof(frame_type))) {
-    Serial.println("Error: Empty Domoticz Data frame received");
+  if (!Wire.readBytes(&frame_type, sizeof(frame_type))) {
+    Serial.println(F("Error: Empty Domoticz Data frame received"));
     return;
   }
-  if(frame_type != WIRE_DATA_FRAME) {
-    Serial.println("Error: Wrong frame header byte received in Domoticz Data frame");
+  if (frame_type != WIRE_DATA_FRAME) {
+    Serial.println(F("Error: Wrong frame header byte received in Domoticz Data frame"));
     return;
   }
 
-  Wire.readBytes((byte*) &td, sizeof(td));
-  Wire.readBytes((byte*) &ed, sizeof(ed));
-  Wire.readBytes((byte*) &pd, sizeof(pd));
+  Wire.readBytes((byte *)&td, sizeof(td));
+  Wire.readBytes((byte *)&ed, sizeof(ed));
+  Wire.readBytes((byte *)&pd, sizeof(pd));
   Wire.readBytes(&wire_crc, sizeof(wire_crc));
 
   CRC8 crc;
@@ -211,8 +211,8 @@ void on60sec() {
   crc.add((uint8_t *)&ed, sizeof(ed));
   crc.add((uint8_t *)&pd, sizeof(pd));
 
-  if(crc.calc() != wire_crc) {
-    Serial.println("Error: Wrong CRC received in Domoticz Data frame");
+  if (crc.calc() != wire_crc) {
+    Serial.println(F("Error: Wrong CRC received in Domoticz Data frame"));
     return;
   }
 
@@ -242,32 +242,31 @@ void on60sec() {
 }
 
 void printIPInfo() {
-  Serial.print("ethernet ip address: ");
+  Serial.print(F("ethernet ip address: "));
   Serial.println(eth.localIP());
-  Serial.print("ethernet subnetMask: ");
+  Serial.print(F("ethernet subnetMask: "));
   Serial.println(eth.subnetMask());
-  Serial.print("ethernet gateway: ");
+  Serial.print(F("ethernet gateway: "));
   Serial.println(eth.gatewayIP());
 }
 
 void checkEthernetConnection() {
-    static bool connectedETH_last_state;
-    if(eth.connected()) {
-      //Serial.println("eth connected");
-      if(!connectedETH_last_state) {
-        Serial.println("eth now connected");
-        printIPInfo();
-        connectToMqtt();
-      }
-      connectedETH_last_state = true;
+  static bool connectedETH_last_state;
+  if (eth.connected()) {
+    //Serial.println(F("eth connected"));
+    if (!connectedETH_last_state) {
+      Serial.println(F("eth now connected"));
+      printIPInfo();
+      connectToMqtt();
     }
-    else {
-      //Serial.println("eth not connected");
-      if(connectedETH_last_state) {
-        Serial.println("eth now disconnected");
-      }
-      connectedETH_last_state = false;
+    connectedETH_last_state = true;
+  } else {
+    //Serial.println("eth not connected");
+    if (connectedETH_last_state) {
+      Serial.println(F("eth now disconnected"));
     }
+    connectedETH_last_state = false;
+  }
 }
 
 void showValues(TempData td, EnergyData ed, PidData pd) {
@@ -302,99 +301,96 @@ void connectToMqttCheck() {
 }
 
 void connectToMqtt() {
-  Serial.println("Connecting to MQTT...");
+  Serial.println(F("Connecting to MQTT..."));
   mqttClient.connect();
 }
 
 void onMqttConnect(bool sessionPresent) {
-  Serial.print("Connected to MQTT broker: ");
+  Serial.print(F("Connected to MQTT broker: "));
   Serial.print(MQTT_SERVER);
-  Serial.print(", port: ");
+  Serial.print(F(", port: "));
   Serial.println(MQTT_PORT);
-  Serial.print("PubTopic: ");
+  Serial.print(F("PubTopic: "));
   Serial.println(PubTopic);
 
   connectedMQTT = true;
 
-  Serial.println("------------------------------");
-  Serial.print("Session present: ");
+  Serial.println(F("------------------------------"));
+  Serial.print(F("Session present: "));
   Serial.println(sessionPresent);
 
   mqttClient.publish(SettingsTopicIn, 0, false, "Put Heat Pump command here.");
   mqttClient.publish(SettingsTopicOut, 0, false, "Read Heat Pump command output from here.");
 
   uint16_t packetIdSub = mqttClient.subscribe(SettingsTopicIn, 0);
-  Serial.print("Subscribing: ");
+  Serial.print(F("Subscribing: "));
   Serial.println(SettingsTopicIn);
 
   mqttClient.publish(PubTopic, 0, true, "ESP8266_Ethernet Test1");
-  Serial.println("Publishing at QoS 0");
+  Serial.println(F("Publishing at QoS 0"));
 
   uint16_t packetIdPub1 = mqttClient.publish(PubTopic, 1, true, "ESP8266_Ethernet Test2");
-  Serial.print("Publishing at QoS 1, packetId: ");
+  Serial.print(F("Publishing at QoS 1, packetId: "));
   Serial.println(packetIdPub1);
 
   uint16_t packetIdPub2 = mqttClient.publish(PubTopic, 2, true, "ESP8266_Ethernet Test3");
-  Serial.print("Publishing at QoS 2, packetId: ");
+  Serial.print(F("Publishing at QoS 2, packetId: "));
   Serial.println(packetIdPub2);
 
-  Serial.println("------------------------------");
+  Serial.println(F("------------------------------"));
 }
 
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
-  (void) reason;
+  (void)reason;
   connectedMQTT = false;
-  Serial.println("Disconnected from MQTT.");
+  Serial.println(F("Disconnected from MQTT."));
   if (eth.connected()) {
     timer.after(2000, connectToMqtt);
   }
 }
 
-void onMqttSubscribe(const uint16_t& packetId, const uint8_t& qos) {
-  Serial.println("Subscribe acknowledged.");
-  Serial.print("  packetId: ");
+void onMqttSubscribe(const uint16_t &packetId, const uint8_t &qos) {
+  Serial.println(F("Subscribe acknowledged."));
+  Serial.print(F("  packetId: "));
   Serial.println(packetId);
-  Serial.print("  qos: ");
+  Serial.print(F("  qos: "));
   Serial.println(qos);
 }
 
-void onMqttUnsubscribe(const uint16_t& packetId) {
-  Serial.println("Unsubscribe acknowledged.");
-  Serial.print("  packetId: ");
+void onMqttUnsubscribe(const uint16_t &packetId) {
+  Serial.println(F("Unsubscribe acknowledged."));
+  Serial.print(F("  packetId: "));
   Serial.println(packetId);
 }
 
-void onMqttMessage(char* topic, char* payload, const AsyncMqttClientMessageProperties& properties,
-                   const size_t& len, const size_t& index, const size_t& total) {
+void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessageProperties &properties,
+                   const size_t &len, const size_t &index, const size_t &total) {
   char message[len + 1];
 
   memcpy(message, payload, len);
   message[len] = 0;
 
-  if(!strcmp(topic, SettingsTopicIn)) {
+  if (!strcmp(topic, SettingsTopicIn)) {
     char cmd[5];
-    uint8_t cmd_len = min(strcspn(message, " "), sizeof(cmd)-1);
+    uint8_t cmd_len = min(strcspn(message, " "), sizeof(cmd) - 1);
     Serial.println(cmd_len);
     memcpy(cmd, message, cmd_len);
-    cmd[cmd_len] = 0x00; // terminate string
+    cmd[cmd_len] = 0x00;  // terminate string
 
     Serial.println(cmd);
 
-    if(!strcmp(cmd, "set")) {
-      processSet(message+cmd_len+1);
-    }
-    else if(!strcmp(cmd, "get")) {
-      processGet(message+cmd_len+1);
-    }
-    else if(!strcmp(cmd, "save")) {
+    if (!strcmp(cmd, "set")) {
+      processSet(message + cmd_len + 1);
+    } else if (!strcmp(cmd, "get")) {
+      processGet(message + cmd_len + 1);
+    } else if (!strcmp(cmd, "save")) {
       processSave();
-    }
-    else {
-      Serial.println("NIEZNANA KOMENDA");
-      mqttClient.publish(SettingsTopicOut, 0, false, "NIEZNANA KOMENDA");
+    } else {
+      Serial.println(F("Unknown command"));
+      mqttClient.publish(SettingsTopicOut, 0, false, "Unknown command");
     }
   }
-/*
+  /*
   Serial.println("Publish received.");
   Serial.print("  topic: ");
   Serial.println(topic);
@@ -415,58 +411,53 @@ void onMqttMessage(char* topic, char* payload, const AsyncMqttClientMessagePrope
 */
 }
 
-void onMqttPublish(const uint16_t& packetId) {
-  Serial.println("Publish acknowledged.");
-  Serial.print("  packetId: ");
+void onMqttPublish(const uint16_t &packetId) {
+  Serial.println(F("Publish acknowledged."));
+  Serial.print(F("  packetId: "));
   Serial.println(packetId);
 }
 
 void processGet(char *param) {
   char buf[70];
-  if(!strcmp(param, "pid")) {
-    Serial.println("Calling for pid");
+  if (!strcmp(param, "pid")) {
+    Serial.println(F("Calling for pid"));
     Wire.beginTransmission(SLAVE_ADDR);
-    Wire.write(0x02); // get pid
+    Wire.write(0x02);  // get pid
     Wire.endTransmission();
     PidParams pid_params;
     Wire.requestFrom(SLAVE_ADDR, sizeof(pid_params));
-    Wire.readBytes((byte*) &pid_params, sizeof(pid_params));
+    Wire.readBytes((byte *)&pid_params, sizeof(pid_params));
     snprintf(buf, sizeof(buf), "%.2f %.2f %.2f %hhu %hhu", pid_params.kp, pid_params.ki, pid_params.kd, pid_params.omin, pid_params.omax);
-  }
-  else if(!strcmp(param, "hc")) {
-    Serial.println("Calling for hc");
+  } else if (!strcmp(param, "hc")) {
+    Serial.println(F("Calling for hc"));
     Wire.beginTransmission(SLAVE_ADDR);
-    Wire.write(0x03); // get hc
+    Wire.write(0x03);  // get hc
     Wire.endTransmission();
     HC hc;
     Wire.requestFrom(SLAVE_ADDR, sizeof(hc));
-    Wire.readBytes((byte*) &hc, sizeof(hc));
+    Wire.readBytes((byte *)&hc, sizeof(hc));
     snprintf(buf, sizeof(buf), "%01u.%02u %01u.%02u %01u.%02u %01u.%02u", hc.hc_minus5 / 100, hc.hc_minus5 % 100, hc.hc_0 / 100, hc.hc_0 % 100,
-              hc.hc_5 / 100, hc.hc_5 % 100, hc.hc_10 / 100, hc.hc_10 % 100);
-  }
-  else if(!strcmp(param, "temp")) {
-    Serial.println("Calling for temp");
+             hc.hc_5 / 100, hc.hc_5 % 100, hc.hc_10 / 100, hc.hc_10 % 100);
+  } else if (!strcmp(param, "temp")) {
+    Serial.println(F("Calling for temp"));
     Wire.beginTransmission(SLAVE_ADDR);
-    Wire.write(0x04); // get temp
+    Wire.write(0x04);  // get temp
     Wire.endTransmission();
     TempData td;
     Wire.requestFrom(SLAVE_ADDR, sizeof(td));
-    Wire.readBytes((byte*) &td, sizeof(td));
+    Wire.readBytes((byte *)&td, sizeof(td));
     snprintf(buf, sizeof(buf), "%01u.%02u %01u.%02u %01d.%02d", td.heat / 100, td.heat % 100, td.ret / 100, td.ret % 100, td.outside / 100, td.outside % 100);
-  }
-  else if(!strcmp(param, "energy")) {
-    Serial.println("Calling for energy");
+  } else if (!strcmp(param, "energy")) {
+    Serial.println(F("Calling for energy"));
     Wire.beginTransmission(SLAVE_ADDR);
-    Wire.write(0x05); // get energy
+    Wire.write(0x05);  // get energy
     Wire.endTransmission();
     EnergyData ed;
     Wire.requestFrom(SLAVE_ADDR, sizeof(ed));
-    Wire.readBytes((byte*) &ed, sizeof(ed));
+    Wire.readBytes((byte *)&ed, sizeof(ed));
     snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V\nCurrent: %01u.%03u A\nPower: %01u.%01u W\nPF: %01u.%02u",
              ed.voltage / 10, ed.voltage % 10, ed.current / 1000, ed.current % 1000, ed.power / 10, ed.power % 10, ed.pf / 100, ed.pf % 100);
-  }
-  else {
-    strcpy(buf, "unknown parameter ");
+  } else {
     snprintf(buf, sizeof(buf), "unknown parameter %s", param);
   }
   mqttClient.publish(SettingsTopicOut, 0, false, buf);
@@ -475,19 +466,19 @@ void processGet(char *param) {
 
 void processSet(char *param) {
   char buf[50];
-  Serial.println("SET COMMAND");
+  Serial.println(F("SET COMMAND"));
   Serial.println(param);
   char *values;
   uint8_t args_assigned;
-  if(!strncmp(param, "pid", 3)) {
+  if (!strncmp(param, "pid", 3)) {
     values = param + 4;
-    Serial.println("Trying set pid");
+    Serial.println(F("Trying set pid"));
     PidParams pid_params;
-    Serial.println("Before sscanf");
+    Serial.println(F("Before sscanf"));
     args_assigned = sscanf(values, "%f %f %f %hhu %hhu", &pid_params.kp, &pid_params.ki, &pid_params.kd, &pid_params.omin, &pid_params.omax);
-    Serial.println("After sscanf");
-    if(args_assigned == 5) {
-      Serial.println("Setting pid");
+    Serial.println(F("After sscanf"));
+    if (args_assigned == 5) {
+      Serial.println(F("Setting pid"));
       strcpy(buf, "Setting pid");
 
       Serial.println(pid_params.kp);
@@ -496,23 +487,21 @@ void processSet(char *param) {
       Serial.println(pid_params.omin);
       Serial.println(pid_params.omax);
       Wire.beginTransmission(SLAVE_ADDR);
-      Wire.write(0x12); // set pid cmd
-      Wire.write((byte *) &pid_params, sizeof(pid_params));
+      Wire.write(0x12);  // set pid cmd
+      Wire.write((byte *)&pid_params, sizeof(pid_params));
       Wire.endTransmission();
-    }
-    else {
+    } else {
       strcpy(buf, "Wrong values for pid");
     }
-  }
-  else if(!strncmp(param, "hc", 2)) {
+  } else if (!strncmp(param, "hc", 2)) {
     values = param + 3;
-    Serial.println("Trying set hc");
+    Serial.println(F("Trying set hc"));
     HC hc;
-    Serial.println("Before sscanf");
+    Serial.println(F("Before sscanf"));
     args_assigned = sscanf(values, "%hu %hu %hu %hu", &hc.hc_minus5, &hc.hc_0, &hc.hc_5, &hc.hc_10);
-    Serial.println("After sscanf");
-    if(args_assigned == 4) {
-      Serial.println("Setting hc");
+    Serial.println(F("After sscanf"));
+    if (args_assigned == 4) {
+      Serial.println(F("Setting hc"));
       strcpy(buf, "Setting hc");
 
       Serial.println(hc.hc_minus5);
@@ -520,24 +509,21 @@ void processSet(char *param) {
       Serial.println(hc.hc_5);
       Serial.println(hc.hc_10);
       Wire.beginTransmission(SLAVE_ADDR);
-      Wire.write(0x13); // set hc cmd
-      Wire.write((byte *) &hc, sizeof(hc));
+      Wire.write(0x13);  // set hc cmd
+      Wire.write((byte *)&hc, sizeof(hc));
       Wire.endTransmission();
-    }
-    else {
+    } else {
       strcpy(buf, "Wrong values for hc");
     }
-  }
-  else {
-    strcpy(buf, "unknown parameter ");
+  } else {
     snprintf(buf, sizeof(buf), "unknown parameter %s", param);
   }
   mqttClient.publish(SettingsTopicOut, 0, false, buf);
 }
 
 void processSave() {
-  Serial.println("Saving to EEPROM");
+  Serial.println(F("Saving to EEPROM"));
   Wire.beginTransmission(SLAVE_ADDR);
-  Wire.write(0x20); // save cmd
+  Wire.write(0x20);  // save cmd
   Wire.endTransmission();
 }

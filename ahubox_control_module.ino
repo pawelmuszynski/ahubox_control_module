@@ -608,11 +608,7 @@ void setup() {
 }
 
 void loop() {
-  //timer.update();
   pid.Compute();
-  //heat_ds_prog_button.tick();
-  //return_ds_prog_button.tick();
-  //outside_ds_prog_button.tick();
 
   // ======== UART commands support ==========
   /*  char received = NULL;
@@ -680,26 +676,26 @@ void loop() {
   }
   outside_ds_prog_button_last_state = outside_ds_prog_button_current_state;
 
-  //buzzer support
+  //buzzer support (need to be fixed)
   if(beepOK) {
     if(!beep_last_state) beep_start_millis = millis() / 100;
     digitalWrite(BUZZER_PIN, LOW);
-    //Serial.println("beep");
+    //Serial.println(F("beep"));
 
     if((uint8_t)((uint8_t)(millis()/100) - beep_start_millis) >= 2 ) {
       beepOK = false;
       digitalWrite(BUZZER_PIN, HIGH);
-      //Serial.println("stop");
+      //Serial.println(F("stop"));
     }
   }
   if(beepNOK) {
     if(!beep_last_state) beep_start_millis = millis() / 100;
     digitalWrite(BUZZER_PIN, LOW);
-    //Serial.println("beep");
+    //Serial.println(F("beep"));
     if((uint8_t)((uint8_t)(millis()/100) - beep_start_millis) >= 10 ) {
       beepNOK = false;
       digitalWrite(BUZZER_PIN, HIGH);
-      //Serial.println("stop");
+      //Serial.println(F("stop"));
     }
   }
   beep_last_state = beepOK || beepNOK;
@@ -707,7 +703,7 @@ void loop() {
 
 void onPulse() {
   pulse_counter++;
-  //Serial.println("pulse");
+  //Serial.println(F("pulse"));
 }
 
 void getSensorProbeValues(uint8_t i) {
@@ -755,15 +751,15 @@ void flowAlarmCheck() {
   if(pulse_counter < CHECK_PULSE_THRESHOLD) {
     alarm_flag = true;
     Serial.print(pulse_counter);
-    Serial.print(" is below ");
+    Serial.print(F(" is below "));
     Serial.println(CHECK_PULSE_THRESHOLD);
-    Serial.println("rise ALARM!");
+    Serial.println(F("rise ALARM!"));
   }
   pulse_counter = 0;
 }
 
 void wireRespondDomoticzValues() {
-  Serial.println("Respond with domoticz values");
+  Serial.println(F("Respond with domoticz values"));
   avgCalcAll();
 
   CRC8 crc;
@@ -785,29 +781,29 @@ void wireRespondDomoticzValues() {
 }
 
 void wireRespondPidParams() {
-  Serial.println("respond pid params");
+  Serial.println(F("respond with pid params"));
   Wire.write((byte *)&pid_params, sizeof(pid_params));
 }
 
 void wireRespondHeatCurveParams() {
-  Serial.println("respond heat curve");
+  Serial.println(F("respond with heat curve"));
   Wire.write((byte *)&heat_curve, sizeof(heat_curve));
 }
 
 void wireRespondTempValues() {
-  Serial.println("respond temp values");
+  Serial.println(F("respond with temp values"));
   avgCalcAll();
   Wire.write((byte *)&temp_avg, sizeof(temp_avg));
 }
 
 void wireRespondEnergyValues() {
-  Serial.println("respond energy values");
+  Serial.println(F("respond with energy values"));
   avgCalcAll();
   Wire.write((byte *)&energy_avg, sizeof(energy_avg));
 }
 
 void onWireResponseRequest() {
-  Serial.println("Wire response request");
+  Serial.println(F("Wire response request"));
 
   switch (wire_cmd) {
     case 0x01:
@@ -826,7 +822,7 @@ void onWireResponseRequest() {
       wireRespondEnergyValues();
       break;
     default:
-      Serial.println("responde default (uknonwn command)");
+      Serial.println(F("responde default (uknonwn command)"));
       Wire.write(0x00);
   }
   wire_cmd = 0x00;
