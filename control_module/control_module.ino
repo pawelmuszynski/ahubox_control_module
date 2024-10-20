@@ -3,10 +3,9 @@
  * by 10, 100 or 1000 to get decimal precision. For instance temperatures
  * and are multiplied by 100. Keep it in mind during PID tuning.
  *
- * It's based on:
- * Timer library from https://github.com/JChristensen/Timer
- * Modified PIDv1 library from https://github.com/br3ttb/Arduino-PID-Library
- * Modified PZEM004Tv30 library from https://github.com/mandulaj/PZEM-004T-v30
+ * It uses modified libraries from:
+ * PIDv1 library from https://github.com/br3ttb/Arduino-PID-Library
+ * PZEM004Tv30 library from https://github.com/mandulaj/PZEM-004T-v30
  *
 */
 
@@ -582,12 +581,6 @@ void setup() {
   if(ds.getResolution(return_ds) != ds_precision) ds.setResolution(ds_precision);
   if(ds.getResolution(outside_ds) != ds_precision) ds.setResolution(ds_precision);
 
-  // --- pzem ---
-  //char pzem_addr[4];
-  //Serial.print("PZEM Address: ");
-  //itoa(pzem.readAddress(), pzem_addr, 16);
-  //Serial.println(pzem_addr);
-
   // --- Wire ---
   Wire.begin(WIRE_SLAVE_ADDR);
   Wire.onRequest(onWireResponseRequest);
@@ -598,10 +591,6 @@ void setup() {
     getSensorProbeValues(i);
   }
 
-  // --- timers ---
-  //timer.every(4000, on4Sec);
-  //timer.every(60000, on60Sec);
-  //timer.every(5000, flowAlarmCheck);
   timer_start_millis = millis()/1000;
 
   Serial.println(F("--== STARTED ==-"));
@@ -774,10 +763,6 @@ void wireRespondDomoticzValues() {
   Wire.write((byte *)&energy_avg, sizeof(energy_avg));
   Wire.write((byte *)&pid_data, sizeof(pid_data));
   Wire.write(&wire_crc, sizeof(wire_crc));
-
-  //Serial.println("=======================");
-  //Serial.print("CRC: ");
-  //Serial.println(wire_crc);
 }
 
 void wireRespondPidParams() {
