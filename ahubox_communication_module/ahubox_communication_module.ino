@@ -6,24 +6,19 @@
 
 #define SLAVE_ADDR 8
 #define CSPIN 16
-//#define ETH_HOSTNAME "pompa_ciepla"
 
-#define MQTT_CHECK_INTERVAL_MS 2000
+#define MQTT_CHECK_INTERVAL_MS 5000
 #define MQTT_PORT 1883
 #define MQTT_CLIENT_ID "pompa_ciepla_dev"
-//#define MQTT_WILL_TOPIC "/topic/test"     // You can change
-//#define MQTT_WILL_MSG   "I am leaving..." // You can change
 #define MQTT_SERVER "10.0.2.10"
-#define PAYLOAD_SIZE 50
 
 #define WIRE_DATA_FRAME 0xAA  // It identifies data frame (crc is not enough). It should be equal on both sides.
 
 Timer timer;
 ENC28J60lwIP eth(CSPIN);
 
-const char *PubTopic = "test/pompa_ciepla_dev";
-const char *SettingsTopicIn = "heat_pump_dev/settings/in";
-const char *SettingsTopicOut = "heat_pump_dev/settings/out";
+const char *ConsoleTopicIn = "heat_pump_dev/console/in";
+const char *ConsoleTopicOut = "heat_pump_dev/console/out";
 
 AsyncMqttClient mqttClient;
 bool connectedMQTT = false;
@@ -51,10 +46,6 @@ struct HC {
   uint16_t hc_minus5, hc_0, hc_5, hc_10;
 };
 
-TempData temp_data;
-EnergyData energy_data;
-PidData pid_data;
-
 byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02 };
 
 void setup() {
@@ -62,10 +53,8 @@ void setup() {
   Wire.begin();
   Serial.begin(115200);
   Serial.println(F("\n\n================== START ===================="));
-  Serial.print(ESP.getFullVersion());
-  Serial.println();
-  Serial.print(ESP.getCoreVersion());
-  Serial.println();
+  Serial.println(ESP.getFullVersion());
+  Serial.println(ESP.getCoreVersion());
 
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
@@ -73,26 +62,20 @@ void setup() {
   SPI.setFrequency(1000000);
 
   eth.setDefault();
-  //eth.setHostname(ETH_HOSTNAME);
   if (!eth.begin(mac)) Serial.println(F("ERROR: No ENC28J60 Ethernet hardware module."));
-  //else last_conn_status = true;
-
-  //timer.every(10000, on10sec);
-  timer.every(5000, checkEthernetConnection);
-  timer.every(60000, on60sec);
 
   mqttClient.onConnect(onMqttConnect);
   mqttClient.onDisconnect(onMqttDisconnect);
-  mqttClient.onSubscribe(onMqttSubscribe);
-  mqttClient.onUnsubscribe(onMqttUnsubscribe);
+  //mqttClient.onSubscribe(onMqttSubscribe);
+  //mqttClient.onUnsubscribe(onMqttUnsubscribe);
   mqttClient.onMessage(onMqttMessage);
   mqttClient.onPublish(onMqttPublish);
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
 
+  timer.every(5000, checkEthernetConnection);
+  timer.every(60000, on60sec);
   timer.every(MQTT_CHECK_INTERVAL_MS, connectToMqttCheck);
 }
-
-uint8_t wire_val[2];
 
 void loop() {
   timer.update();
@@ -175,8 +158,8 @@ void on10sec() {
 */
 
 void on60sec() {
-  Serial.println(F("---------------------"));
-  Serial.println(F("Wire get values"));
+  Serial.println(F("\n---------------------"));
+  Serial.println(F("Get Domoticz Data"));
   Serial.println(F("---------------------"));
 
   Wire.beginTransmission(SLAVE_ADDR);
@@ -310,8 +293,6 @@ void onMqttConnect(bool sessionPresent) {
   Serial.print(MQTT_SERVER);
   Serial.print(F(", port: "));
   Serial.println(MQTT_PORT);
-  Serial.print(F("PubTopic: "));
-  Serial.println(PubTopic);
 
   connectedMQTT = true;
 
@@ -319,24 +300,12 @@ void onMqttConnect(bool sessionPresent) {
   Serial.print(F("Session present: "));
   Serial.println(sessionPresent);
 
-  mqttClient.publish(SettingsTopicIn, 0, false, "Put Heat Pump command here.");
-  mqttClient.publish(SettingsTopicOut, 0, false, "Read Heat Pump command output from here.");
+  mqttClient.publish(ConsoleTopicIn, 0, false, "Put Heat Pump command here.");
+  mqttClient.publish(ConsoleTopicOut, 0, false, "Read Heat Pump command output from here.");
 
-  uint16_t packetIdSub = mqttClient.subscribe(SettingsTopicIn, 0);
+  uint16_t packetIdSub = mqttClient.subscribe(ConsoleTopicIn, 0);
   Serial.print(F("Subscribing: "));
-  Serial.println(SettingsTopicIn);
-
-  mqttClient.publish(PubTopic, 0, true, "ESP8266_Ethernet Test1");
-  Serial.println(F("Publishing at QoS 0"));
-
-  uint16_t packetIdPub1 = mqttClient.publish(PubTopic, 1, true, "ESP8266_Ethernet Test2");
-  Serial.print(F("Publishing at QoS 1, packetId: "));
-  Serial.println(packetIdPub1);
-
-  uint16_t packetIdPub2 = mqttClient.publish(PubTopic, 2, true, "ESP8266_Ethernet Test3");
-  Serial.print(F("Publishing at QoS 2, packetId: "));
-  Serial.println(packetIdPub2);
-
+  Serial.println(ConsoleTopicIn);
   Serial.println(F("------------------------------"));
 }
 
@@ -349,6 +318,7 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
   }
 }
 
+/*
 void onMqttSubscribe(const uint16_t &packetId, const uint8_t &qos) {
   Serial.println(F("Subscribe acknowledged."));
   Serial.print(F("  packetId: "));
@@ -362,15 +332,16 @@ void onMqttUnsubscribe(const uint16_t &packetId) {
   Serial.print(F("  packetId: "));
   Serial.println(packetId);
 }
+*/
 
 void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessageProperties &properties,
                    const size_t &len, const size_t &index, const size_t &total) {
   char message[len + 1];
 
   memcpy(message, payload, len);
-  message[len] = 0;
+  message[len] = 0x00;
 
-  if (!strcmp(topic, SettingsTopicIn)) {
+  if (!strcmp(topic, ConsoleTopicIn)) {
     char cmd[5];
     uint8_t cmd_len = min(strcspn(message, " "), sizeof(cmd) - 1);
     Serial.println(cmd_len);
@@ -387,7 +358,7 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
       processSave();
     } else {
       Serial.println(F("Unknown command"));
-      mqttClient.publish(SettingsTopicOut, 0, false, "Unknown command");
+      mqttClient.publish(ConsoleTopicOut, 0, false, "Unknown command");
     }
   }
   /*
@@ -436,8 +407,7 @@ void processGet(char *param) {
     HC hc;
     Wire.requestFrom(SLAVE_ADDR, sizeof(hc));
     Wire.readBytes((byte *)&hc, sizeof(hc));
-    snprintf(buf, sizeof(buf), "%01u.%02u %01u.%02u %01u.%02u %01u.%02u", hc.hc_minus5 / 100, hc.hc_minus5 % 100, hc.hc_0 / 100, hc.hc_0 % 100,
-             hc.hc_5 / 100, hc.hc_5 % 100, hc.hc_10 / 100, hc.hc_10 % 100);
+    snprintf(buf, sizeof(buf), "%hu %hu %hu %hu", hc.hc_minus5, hc.hc_0, hc.hc_5, hc.hc_10);
   } else if (!strcmp(param, "temp")) {
     Serial.println(F("Calling for temp"));
     Wire.beginTransmission(SLAVE_ADDR);
@@ -446,7 +416,7 @@ void processGet(char *param) {
     TempData td;
     Wire.requestFrom(SLAVE_ADDR, sizeof(td));
     Wire.readBytes((byte *)&td, sizeof(td));
-    snprintf(buf, sizeof(buf), "%01u.%02u %01u.%02u %01d.%02d", td.heat / 100, td.heat % 100, td.ret / 100, td.ret % 100, td.outside / 100, td.outside % 100);
+    snprintf(buf, sizeof(buf), "%hu %hu %hd", td.heat, td.ret, td.outside);
   } else if (!strcmp(param, "energy")) {
     Serial.println(F("Calling for energy"));
     Wire.beginTransmission(SLAVE_ADDR);
@@ -458,15 +428,15 @@ void processGet(char *param) {
     snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V\nCurrent: %01u.%03u A\nPower: %01u.%01u W\nPF: %01u.%02u",
              ed.voltage / 10, ed.voltage % 10, ed.current / 1000, ed.current % 1000, ed.power / 10, ed.power % 10, ed.pf / 100, ed.pf % 100);
   } else {
-    snprintf(buf, sizeof(buf), "unknown parameter %s", param);
+    snprintf(buf, sizeof(buf), "Unknown parameter %s", param);
   }
-  mqttClient.publish(SettingsTopicOut, 0, false, buf);
+  mqttClient.publish(ConsoleTopicOut, 0, false, buf);
   Serial.println(buf);
 }
 
 void processSet(char *param) {
   char buf[50];
-  Serial.println(F("SET COMMAND"));
+  Serial.println(F("Set command"));
   Serial.println(param);
   char *values;
   uint8_t args_assigned;
@@ -495,7 +465,7 @@ void processSet(char *param) {
     }
   } else if (!strncmp(param, "hc", 2)) {
     values = param + 3;
-    Serial.println(F("Trying set hc"));
+    Serial.println(F("Trying to set hc"));
     HC hc;
     Serial.println(F("Before sscanf"));
     args_assigned = sscanf(values, "%hu %hu %hu %hu", &hc.hc_minus5, &hc.hc_0, &hc.hc_5, &hc.hc_10);
@@ -516,9 +486,9 @@ void processSet(char *param) {
       strcpy(buf, "Wrong values for hc");
     }
   } else {
-    snprintf(buf, sizeof(buf), "unknown parameter %s", param);
+    snprintf(buf, sizeof(buf), "Unknown parameter %s", param);
   }
-  mqttClient.publish(SettingsTopicOut, 0, false, buf);
+  mqttClient.publish(ConsoleTopicOut, 0, false, buf);
 }
 
 void processSave() {
