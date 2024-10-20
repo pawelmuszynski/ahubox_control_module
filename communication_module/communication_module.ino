@@ -3,25 +3,38 @@
 #include <ENC28J60lwIP.h>
 #include <CRC8.h>
 #include <AsyncMqtt_Generic.h>
-
-#define SLAVE_ADDR 8
-#define CSPIN 16
+#include <EEPROM.h>
 
 #define MQTT_CHECK_INTERVAL_MS 5000
-#define MQTT_PORT 1883
-#define MQTT_CLIENT_ID "pompa_ciepla_dev"
-#define MQTT_SERVER "10.0.2.10"
 
 #define WIRE_DATA_FRAME 0xAA  // It identifies data frame (crc is not enough). It should be equal on both sides.
+#define SLAVE_ADDR 8
+#define CSPIN 16
+#define DEFROST_SIGNAL_PIN 0
+
+#define DEFAULT_SETTINGS_INDICATOR 0xAA  // If it's not set in EEPROM, default settings will be writen.
+#define DEFAULT_MAC_ADDR 0x00, 0x01, 0xDE, 0xAD, 0xBE, 0xEF
+#define DEFAULT_MQTT_SERVER "10.0.2.10"
+#define DEFAULT_MQTT_PORT 1883
+#define DEFAULT_MQTT_CLIENT_ID "pompa_ciepla_dev"
+
+#define DEFAULT_SETTINGS_INDICATOR_ADDR 0x00  // uint8_t
+#define MAC_ADDR_ADDR 0x01  // to 0x06 (6x uint8_t)
+#define MQTT_SERVER_ADDR 0x07  // to 0x46 (63x char + null)
+#define MQTT_PORT_ADDR 0x47  // to 0x48 (uint16_t)
+#define MQTT_CLIENT_ID_ADDR 0x49 // to 0x7A (31x char + null)
+
+//uint8_t mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02 };
+const char *console_in_topic = "heat_pump_dev/console/in";
+const char *console_out_topic = "heat_pump_dev/console/out";
+const char *domoticz_in_topic = "domoticz/in";
 
 Timer timer;
 ENC28J60lwIP eth(CSPIN);
-
-const char *ConsoleTopicIn = "heat_pump_dev/console/in";
-const char *ConsoleTopicOut = "heat_pump_dev/console/out";
-
 AsyncMqttClient mqttClient;
 bool connectedMQTT = false;
+
+bool defrost_last_state = false;
 
 struct EnergyData {
   uint16_t voltage, current, power, energy, pf;
@@ -46,16 +59,46 @@ struct HC {
   uint16_t hc_minus5, hc_0, hc_5, hc_10;
 };
 
-byte mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02 };
-
 void setup() {
-  delay(1000);
-  Wire.begin();
+  delay(5000);
   Serial.begin(115200);
+  EEPROM.begin(0x7F);
   Serial.println(F("\n\n================== START ===================="));
   Serial.println(ESP.getFullVersion());
   Serial.println(ESP.getCoreVersion());
 
+  pinMode(DEFROST_SIGNAL_PIN, INPUT_PULLUP);
+
+  uint8_t mac[] = { DEFAULT_MAC_ADDR };
+  char mqtt_server[64] = DEFAULT_MQTT_SERVER;
+  uint16_t mqtt_port = DEFAULT_MQTT_PORT;
+  char mqtt_client_id[32] = DEFAULT_MQTT_CLIENT_ID;
+
+  uint8_t default_settings_indicator;
+  EEPROM.get(DEFAULT_SETTINGS_INDICATOR_ADDR, default_settings_indicator);
+  if(default_settings_indicator == (uint8_t)DEFAULT_SETTINGS_INDICATOR) {
+    EEPROM.get(MAC_ADDR_ADDR, mac);
+    EEPROM.get(MQTT_SERVER_ADDR, mqtt_server);
+    EEPROM.get(MQTT_PORT_ADDR, mqtt_port);
+    EEPROM.get(MQTT_CLIENT_ID_ADDR, mqtt_client_id);
+  }
+  else {
+    EEPROM.put(DEFAULT_SETTINGS_INDICATOR_ADDR, (uint8_t)DEFAULT_SETTINGS_INDICATOR);
+    EEPROM.put(MAC_ADDR_ADDR, mac);
+    EEPROM.put(MQTT_SERVER_ADDR, mqtt_server);
+    EEPROM.put(MQTT_PORT_ADDR, mqtt_port);
+    EEPROM.put(MQTT_CLIENT_ID_ADDR, mqtt_client_id);
+    Serial.println(F("Setting factory defaults"));
+  }
+  EEPROM.commit();
+  Serial.print(F("Ethernet mac addr: "));
+  for(uint8_t i=0; i<sizeof(mac); i++) {
+    Serial.print(mac[i], HEX);
+    if(i<sizeof(mac)-1) Serial.print(':');
+  }
+  Serial.println();
+
+  Wire.begin();
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(SPI_MODE0);
@@ -70,7 +113,18 @@ void setup() {
   //mqttClient.onUnsubscribe(onMqttUnsubscribe);
   mqttClient.onMessage(onMqttMessage);
   mqttClient.onPublish(onMqttPublish);
-  mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+  Serial.print("mqtt_server: ");
+  Serial.println(mqtt_server);
+  Serial.print("mqtt_port: ");
+  Serial.println(mqtt_port);
+  Serial.print("mqtt_client_id: ");
+  Serial.println(mqtt_client_id);
+  char *mqtt_server_dyn = (char*)malloc(strlen(mqtt_server)+1);
+  strncpy(mqtt_server_dyn, mqtt_server, strlen(mqtt_server)+1);
+  char *mqtt_client_id_dyn = (char*)malloc(strlen(mqtt_client_id)+1);
+  strncpy(mqtt_client_id_dyn, mqtt_client_id, strlen(mqtt_client_id)+1);
+  mqttClient.setClientId(mqtt_client_id_dyn);
+  mqttClient.setServer(mqtt_server_dyn, mqtt_port);
 
   timer.every(5000, checkEthernetConnection);
   timer.every(60000, on60sec);
@@ -80,8 +134,18 @@ void setup() {
 void loop() {
   timer.update();
 
+  if(!defrost_last_state && !digitalRead(DEFROST_SIGNAL_PIN)) {
+    defrost_last_state = true;
+    Serial.println("START DEFROST");
+  }
+
+  if(defrost_last_state && digitalRead(DEFROST_SIGNAL_PIN)) {
+    defrost_last_state = false;
+    Serial.println("END DEFROST");
+  }
+
   // ======== UART commands support ==========
-  /*  char received = 0x00;
+  char received = 0x00;
   static char serial_buf[50];
   static uint8_t buf_index = 0;
   if (Serial.available()) {
@@ -96,27 +160,51 @@ void loop() {
       serial_buf[buf_index] = '\0';
     }
   }
-*/
 }
 
 //void processCommand(char *buf) {
 //  Serial.println(buf);
 //}
 
-/*
 void processCommand(char *buf) {
-  Serial.println("Received command:");
+  Serial.print(F("Received command: "));
   Serial.println(buf);
   if (!strncmp(buf, "get ", 4)) {  // get command
-    processGet(buf + 4);
+    //processGet(buf + 4);
   } else if (!strncmp(buf, "set ", 4)) {  // set command
-    //processSet(buf + 4);
+    processSet(buf + 4);
   } else {
     Serial.println("Command not found. Use help command.");
   }
   Serial.println("==================");
 }
-*/
+
+void processSet(char *buf) {
+  if(!strncmp(buf, "mqtt_server ", 12)) {
+    Serial.print(F("Setting mqtt_server: "));
+    Serial.println(buf + 12);
+    writeStringToEEPROM(MQTT_SERVER_ADDR, buf + 12, strlen(buf + 12));
+    Serial.println(F("Please reset the board."));
+  } else if (!strncmp(buf, "mqtt_port ", 10)) {
+    Serial.print(F("Setting mqtt_port: "));
+    Serial.println(buf + 10);
+    uint16_t port = atoi(buf + 10);
+    EEPROM.put(MQTT_PORT_ADDR, port);
+    Serial.println(F("Please reset the board."));
+  } else if (!strncmp(buf, "mqtt_client_id ", 15)) {
+    Serial.print(F("Setting mqtt_client_id: "));
+    Serial.println(buf + 15);
+    writeStringToEEPROM(MQTT_CLIENT_ID_ADDR, buf + 15, strlen(buf + 15));
+    Serial.println(F("Please reset the board."));
+  }
+  EEPROM.commit();
+}
+
+void writeStringToEEPROM(uint16_t addr, const char* str, const uint8_t len) {
+  for(uint8_t i=0; i<=len; i++) {
+    EEPROM.write(addr + i, str[i]);
+  }
+}
 /*
 void processGet(char *buf2) {
   PidParams pp;
@@ -201,35 +289,35 @@ void on60sec() {
 
   showValues(td, ed, pd);
 
-  char buf[50];
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 117, ed.voltage / 10, ed.voltage % 10);
-  mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 118, ed.current / 1000, ed.current % 1000);
-  mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 116, ed.power / 10, ed.power % 10);
-  mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 119, ed.pf / 100, ed.pf % 100);
-  mqttClient.publish("domoticz/in", 0, false, buf);
+  char buf[10];
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.voltage / 10), (uint16_t)(ed.voltage % 10));
+  updateDomoticz(117, buf);
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.current / 1000), (uint16_t)(ed.current % 1000));
+  updateDomoticz(118, buf);
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.power / 10), (uint16_t)(ed.power % 10));
+  updateDomoticz(116, buf);
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.pf / 100), (uint16_t)(ed.pf % 100));
+  updateDomoticz(119, buf);
 
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 4, td.heat / 100, td.heat % 100);
-  mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 6, td.ret / 100, td.ret % 100);
-  mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01d.%02d\"}", 7, td.outside / 100, td.outside % 100);
-  mqttClient.publish("domoticz/in", 0, false, buf);
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(td.heat / 100), (uint16_t)(td.heat % 100));
+  updateDomoticz(4, buf);
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(td.ret / 100), (uint16_t)(td.ret % 100));
+  updateDomoticz(6, buf);
+  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.outside / 100), (int16_t)(td.outside % 100));
+  updateDomoticz(7, buf);
 
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%01u.%02u\"}", 114, pd.sv / 100, pd.sv % 100);
-  mqttClient.publish("domoticz/in", 0, false, buf);
-  snprintf(buf, sizeof(buf), "{\"idx\": %u, \"svalue\": \"%u\"}", 11, map(pd.output, 0, 255, 0, 100));
-  mqttClient.publish("domoticz/in", 0, false, buf);
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(pd.sv / 100), (uint16_t)(pd.sv / 100));
+  updateDomoticz(114, buf);
+  ultoa(map(pd.output, 0, 255, 0, 100), buf, 10);
+  updateDomoticz(11, buf);
 }
 
 void printIPInfo() {
-  Serial.print(F("ethernet ip address: "));
+  Serial.print(F("Ethernet ip address: "));
   Serial.println(eth.localIP());
-  Serial.print(F("ethernet subnetMask: "));
+  Serial.print(F("Ethernet subnetMask: "));
   Serial.println(eth.subnetMask());
-  Serial.print(F("ethernet gateway: "));
+  Serial.print(F("Ethernet gateway: "));
   Serial.println(eth.gatewayIP());
 }
 
@@ -289,10 +377,11 @@ void connectToMqtt() {
 }
 
 void onMqttConnect(bool sessionPresent) {
-  Serial.print(F("Connected to MQTT broker: "));
-  Serial.print(MQTT_SERVER);
-  Serial.print(F(", port: "));
-  Serial.println(MQTT_PORT);
+  Serial.println(F("Connected to MQTT broker."));
+  //Serial.print(F("Connected to MQTT broker: "));
+  //Serial.print(MQTT_SERVER);
+  //Serial.print(F(", port: "));
+  //Serial.println(MQTT_PORT);
 
   connectedMQTT = true;
 
@@ -300,12 +389,12 @@ void onMqttConnect(bool sessionPresent) {
   Serial.print(F("Session present: "));
   Serial.println(sessionPresent);
 
-  mqttClient.publish(ConsoleTopicIn, 0, false, "Put Heat Pump command here.");
-  mqttClient.publish(ConsoleTopicOut, 0, false, "Read Heat Pump command output from here.");
+  mqttClient.publish(console_in_topic, 0, false, "Put Heat Pump command here.");
+  mqttClient.publish(console_out_topic, 0, false, "Read Heat Pump command output from here.");
 
-  uint16_t packetIdSub = mqttClient.subscribe(ConsoleTopicIn, 0);
+  uint16_t packetIdSub = mqttClient.subscribe(console_in_topic, 0);
   Serial.print(F("Subscribing: "));
-  Serial.println(ConsoleTopicIn);
+  Serial.println(console_in_topic);
   Serial.println(F("------------------------------"));
 }
 
@@ -318,22 +407,6 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
   }
 }
 
-/*
-void onMqttSubscribe(const uint16_t &packetId, const uint8_t &qos) {
-  Serial.println(F("Subscribe acknowledged."));
-  Serial.print(F("  packetId: "));
-  Serial.println(packetId);
-  Serial.print(F("  qos: "));
-  Serial.println(qos);
-}
-
-void onMqttUnsubscribe(const uint16_t &packetId) {
-  Serial.println(F("Unsubscribe acknowledged."));
-  Serial.print(F("  packetId: "));
-  Serial.println(packetId);
-}
-*/
-
 void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessageProperties &properties,
                    const size_t &len, const size_t &index, const size_t &total) {
   char message[len + 1];
@@ -341,7 +414,7 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
   memcpy(message, payload, len);
   message[len] = 0x00;
 
-  if (!strcmp(topic, ConsoleTopicIn)) {
+  if (!strcmp(topic, console_in_topic)) {
     char cmd[5];
     uint8_t cmd_len = min(strcspn(message, " "), sizeof(cmd) - 1);
     Serial.println(cmd_len);
@@ -351,14 +424,14 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
     Serial.println(cmd);
 
     if (!strcmp(cmd, "set")) {
-      processSet(message + cmd_len + 1);
+      processMQTTSet(message + cmd_len + 1);
     } else if (!strcmp(cmd, "get")) {
-      processGet(message + cmd_len + 1);
+      processMQTTGet(message + cmd_len + 1);
     } else if (!strcmp(cmd, "save")) {
-      processSave();
+      processMQTTSave();
     } else {
       Serial.println(F("Unknown command"));
-      mqttClient.publish(ConsoleTopicOut, 0, false, "Unknown command");
+      mqttClient.publish(console_out_topic, 0, false, "Unknown command");
     }
   }
   /*
@@ -388,7 +461,7 @@ void onMqttPublish(const uint16_t &packetId) {
   Serial.println(packetId);
 }
 
-void processGet(char *param) {
+void processMQTTGet(char *param) {
   char buf[70];
   if (!strcmp(param, "pid")) {
     Serial.println(F("Calling for pid"));
@@ -430,11 +503,11 @@ void processGet(char *param) {
   } else {
     snprintf(buf, sizeof(buf), "Unknown parameter %s", param);
   }
-  mqttClient.publish(ConsoleTopicOut, 0, false, buf);
+  mqttClient.publish(console_out_topic, 0, false, buf);
   Serial.println(buf);
 }
 
-void processSet(char *param) {
+void processMQTTSet(char *param) {
   char buf[50];
   Serial.println(F("Set command"));
   Serial.println(param);
@@ -442,7 +515,7 @@ void processSet(char *param) {
   uint8_t args_assigned;
   if (!strncmp(param, "pid", 3)) {
     values = param + 4;
-    Serial.println(F("Trying set pid"));
+    Serial.println(F("Trying to set pid"));
     PidParams pid_params;
     Serial.println(F("Before sscanf"));
     args_assigned = sscanf(values, "%f %f %f %hhu %hhu", &pid_params.kp, &pid_params.ki, &pid_params.kd, &pid_params.omin, &pid_params.omax);
@@ -488,12 +561,18 @@ void processSet(char *param) {
   } else {
     snprintf(buf, sizeof(buf), "Unknown parameter %s", param);
   }
-  mqttClient.publish(ConsoleTopicOut, 0, false, buf);
+  mqttClient.publish(console_out_topic, 0, false, buf);
 }
 
-void processSave() {
+void processMQTTSave() {
   Serial.println(F("Saving to EEPROM"));
   Wire.beginTransmission(SLAVE_ADDR);
   Wire.write(0x20);  // save cmd
   Wire.endTransmission();
+}
+
+void updateDomoticz(uint16_t idx, char *svalue) {
+  char buf[50];
+  snprintf(buf, sizeof(buf), "{\"idx\": %hu, \"svalue\": \"%s\"}", idx, svalue);
+  mqttClient.publish(domoticz_in_topic, 0, false, buf);
 }
