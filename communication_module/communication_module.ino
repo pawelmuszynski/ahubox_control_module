@@ -306,7 +306,7 @@ void on60sec() {
   snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.outside / 100), (int16_t)(td.outside % 100));
   updateDomoticz(7, buf);
 
-  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(pd.sv / 100), (uint16_t)(pd.sv / 100));
+  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(pd.sv / 100), (uint16_t)(pd.sv % 100));
   updateDomoticz(114, buf);
   ultoa(map(pd.output, 0, 255, 0, 100), buf, 10);
   updateDomoticz(11, buf);
