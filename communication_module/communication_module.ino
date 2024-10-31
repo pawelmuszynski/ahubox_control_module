@@ -1,8 +1,8 @@
-#include <Timer.h>
+#include "Timer/Timer.h"
 #include <Wire.h>
 #include <ENC28J60lwIP.h>
-#include <CRC8.h>
-#include <AsyncMqtt_Generic.h>
+#include <CRC8.h> 
+#include <AsyncMqtt_Generic.h> // by Mavin Roger, Khoi Hoang
 #include <EEPROM.h>
 
 #define MQTT_CHECK_INTERVAL_MS 5000
@@ -429,6 +429,16 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
       processMQTTGet(message + cmd_len + 1);
     } else if (!strcmp(cmd, "save")) {
       processMQTTSave();
+    // ============== TEMPORARY CODE ==================
+    } else if (!strcmp(cmd, "wp off")) {
+      switchWP(false);
+    } else if (!strcmp(cmd, "wp on")) {
+      switchWP(true);
+    } else if (!strcmp(cmd, "hp off")) {
+      switchHP(false);
+    } else if (!strcmp(cmd, "hp on")) {
+      switchHP(true);
+    // ================================================
     } else {
       Serial.println(F("Unknown command"));
       mqttClient.publish(console_out_topic, 0, false, "Unknown command");
@@ -454,6 +464,38 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
   Serial.println(total);
 */
 }
+
+// =============== TEMPORARY CODE ===================
+
+void switchWP(bool toggle) {
+  Wire.beginTransmission(SLAVE_ADDR);
+  if(toggle) {
+    Wire.write(0x31);
+    Serial.println(F("Switching watter pump on"));
+    mqttClient.publish(console_out_topic, 0, false, "Switching watter pump on");
+  } else {
+    Wire.write(0x30);
+    Serial.println(F("Switching watter pump off"));
+    mqttClient.publish(console_out_topic, 0, false, "Switching watter pump off");
+  }
+  Wire.endTransmission();
+}
+
+void switchHP(bool toggle) {
+  Wire.beginTransmission(SLAVE_ADDR);
+  if(toggle) {
+    Wire.write(0x40);
+    Serial.println(F("Switching heating pump on"));
+    mqttClient.publish(console_out_topic, 0, false, "Switching heating pump on");
+  } else {
+    Wire.write(0x41);
+    Serial.println(F("Switching heating pump off"));
+    mqttClient.publish(console_out_topic, 0, false, "Switching heating pump off");
+  }
+  Wire.endTransmission();
+}
+
+// ==================================================
 
 void onMqttPublish(const uint16_t &packetId) {
   Serial.println(F("Publish acknowledged."));

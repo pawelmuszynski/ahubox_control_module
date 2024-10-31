@@ -849,6 +849,21 @@ void onWireReceive(int bytes) {
       if(Wire.available()) Wire.readBytes((byte *)&heat_curve, sizeof(heat_curve));
       printHCParams();
       break;
+    // ========== TEMPORARY CODE ===========
+    case 0x30:
+      Serial.println(F("switching off water flow pump"));
+      break;
+    case 0x31:
+      Serial.println(F("switching on water flow pump"));
+      break;
+    case 0x40:
+      Serial.println(F("switching off heat pump"));
+      break;
+    case 0x41:
+      Serial.println(F("switching on heat pump"));
+      break;
+    // =====================================
+    
     case 0x20:
       Serial.println(F("Saving data to EEPROM"));
       saveDataToEEPROM();
