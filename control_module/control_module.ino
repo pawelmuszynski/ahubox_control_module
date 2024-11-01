@@ -373,11 +373,11 @@ int16_t getHCValue(HC hc, int16_t outside_temp) {
     th1 = heating temp1 for to1
     th2 = heating temp2 for to2
 
-    f(to) = ((th1 - th2)/(to1 - to2)) * (to - to1) + th1
+    f(to) = ((th1 - th2) * (to - to1)) / (to1 - to2) + th1
     
     In this case we have 7 setpoints for each 5 degrees (to2 = to1 + 5).
     The simplified formula is following:
-    f(to) = ((th2 - th1)/5) * (to - to1) + th1
+    f(to) = ((th2 - th1) * (to - to1)) / 500 + th1
   */
 
   int16_t th1, th2, to1;
@@ -399,7 +399,7 @@ int16_t getHCValue(HC hc, int16_t outside_temp) {
   } else if(outside_temp < -500) {
     return hc.hc_minus5;
   }
-  return ((th2 - th1) / 500) * (outside_temp - to1) + th1;
+  return ((th2 - th1) * (outside_temp - to1)) / 500 + th1;
 }
 /*
 void processGet(char *param) {
