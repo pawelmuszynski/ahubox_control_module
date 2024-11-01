@@ -15,7 +15,20 @@
 #define DEFAULT_MAC_ADDR 0x00, 0x01, 0xDE, 0xAD, 0xBE, 0xEF
 #define DEFAULT_MQTT_SERVER "10.0.2.10"
 #define DEFAULT_MQTT_PORT 1883
-#define DEFAULT_MQTT_CLIENT_ID "pompa_ciepla_dev"
+#define DEFAULT_MQTT_CLIENT_ID "heat_pump_dev"
+#define MQTT_CONSOLE_IN "heat_pump_dev/console/in"
+#define MQTT_CONSOLE_OUT "heat_pump_dev/console/out"
+#define MQTT_DOMOTICZ_IN "domoticz/in"
+
+#define DOMOTICZ_VOLTAGE_IDX 117
+#define DOMOTICZ_CURRENT_IDX 118
+#define DOMOTICZ_POWER_IDX 116
+#define DOMOTICZ_PF_IDX 119
+#define DOMOTICZ_HEAT_IDX 4
+#define DOMOTICZ_RETURN_IDX 6
+#define DOMOTICZ_OUTSIDE_IDX 7
+#define DOMOTICZ_SV_IDX 114
+#define DOMOTICZ_OUTPUT_IDX 11
 
 #define DEFAULT_SETTINGS_INDICATOR_ADDR 0x00  // uint8_t
 #define MAC_ADDR_ADDR 0x01  // to 0x06 (6x uint8_t)
@@ -24,9 +37,9 @@
 #define MQTT_CLIENT_ID_ADDR 0x49 // to 0x7A (31x char + null)
 
 //uint8_t mac[] = { 0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02 };
-const char *console_in_topic = "heat_pump_dev/console/in";
-const char *console_out_topic = "heat_pump_dev/console/out";
-const char *domoticz_in_topic = "domoticz/in";
+const char *console_in_topic = MQTT_CONSOLE_IN;
+const char *console_out_topic = MQTT_CONSOLE_OUT;
+const char *domoticz_in_topic = MQTT_DOMOTICZ_IN;
 
 ENC28J60lwIP eth(CSPIN);
 AsyncMqttClient mqttClient;
@@ -301,25 +314,25 @@ void on60sec() {
 
   char buf[10];
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.voltage / 10), (uint16_t)(ed.voltage % 10));
-  updateDomoticz(117, buf);
+  updateDomoticz(DOMOTICZ_VOLTAGE_IDX, buf);
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.current / 1000), (uint16_t)(ed.current % 1000));
-  updateDomoticz(118, buf);
+  updateDomoticz(DOMOTICZ_CURRENT_IDX, buf);
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.power / 10), (uint16_t)(ed.power % 10));
-  updateDomoticz(116, buf);
+  updateDomoticz(DOMOTICZ_POWER_IDX, buf);
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.pf / 100), (uint16_t)(ed.pf % 100));
-  updateDomoticz(119, buf);
+  updateDomoticz(DOMOTICZ_PF_IDX, buf);
 
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(td.heat / 100), (uint16_t)(td.heat % 100));
-  updateDomoticz(4, buf);
+  updateDomoticz(DOMOTICZ_HEAT_IDX, buf);
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(td.ret / 100), (uint16_t)(td.ret % 100));
-  updateDomoticz(6, buf);
+  updateDomoticz(DOMOTICZ_RETURN_IDX, buf);
   snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.outside / 100), (int16_t)(td.outside % 100));
-  updateDomoticz(7, buf);
+  updateDomoticz(DOMOTICZ_OUTSIDE_IDX, buf);
 
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(pd.sv / 100), (uint16_t)(pd.sv % 100));
-  updateDomoticz(114, buf);
+  updateDomoticz(DOMOTICZ_SV_IDX, buf);
   ultoa(map(pd.output, 0, 255, 0, 100), buf, 10);
-  updateDomoticz(11, buf);
+  updateDomoticz(DOMOTICZ_OUTPUT_IDX, buf);
 }
 
 void printIPInfo() {
