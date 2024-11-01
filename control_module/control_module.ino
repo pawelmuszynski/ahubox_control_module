@@ -852,15 +852,19 @@ void onWireReceive(int bytes) {
     // ========== TEMPORARY CODE ===========
     case 0x30:
       Serial.println(F("switching off water flow pump"));
+      digitalWrite(WATER_PUMP_SWITCH_PIN, HIGH);
       break;
     case 0x31:
       Serial.println(F("switching on water flow pump"));
+      digitalWrite(WATER_PUMP_SWITCH_PIN, LOW);
       break;
     case 0x40:
       Serial.println(F("switching off heat pump"));
+      digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
       break;
     case 0x41:
       Serial.println(F("switching on heat pump"));
+      digitalWrite(HEAT_ON_SWITCH_PIN, LOW);
       break;
     // =====================================
     

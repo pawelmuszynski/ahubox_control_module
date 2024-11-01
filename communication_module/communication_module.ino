@@ -1,11 +1,10 @@
-#include "Timer/Timer.h"
 #include <Wire.h>
 #include <ENC28J60lwIP.h>
-#include <CRC8.h> 
+#include <CRC8.h>
 #include <AsyncMqtt_Generic.h> // by Mavin Roger, Khoi Hoang
 #include <EEPROM.h>
 
-#define MQTT_CHECK_INTERVAL_MS 5000
+#define CONN_CHECK_INTERVAL_S 5
 
 #define WIRE_DATA_FRAME 0xAA  // It identifies data frame (crc is not enough). It should be equal on both sides.
 #define SLAVE_ADDR 8
@@ -29,7 +28,6 @@ const char *console_in_topic = "heat_pump_dev/console/in";
 const char *console_out_topic = "heat_pump_dev/console/out";
 const char *domoticz_in_topic = "domoticz/in";
 
-Timer timer;
 ENC28J60lwIP eth(CSPIN);
 AsyncMqttClient mqttClient;
 bool connectedMQTT = false;
@@ -58,6 +56,8 @@ struct TempData {
 struct HC {
   uint16_t hc_minus5, hc_0, hc_5, hc_10;
 };
+
+uint8_t timer_start, timer_start_60;
 
 void setup() {
   delay(5000);
@@ -126,14 +126,13 @@ void setup() {
   mqttClient.setClientId(mqtt_client_id_dyn);
   mqttClient.setServer(mqtt_server_dyn, mqtt_port);
 
-  timer.every(5000, checkEthernetConnection);
-  timer.every(60000, on60sec);
-  timer.every(MQTT_CHECK_INTERVAL_MS, connectToMqttCheck);
+  timer_start = millis()/1000;
+  timer_start_60 = timer_start;
+
+  Serial.println(F("-= STARTED =-"));
 }
 
 void loop() {
-  timer.update();
-
   if(!defrost_last_state && !digitalRead(DEFROST_SIGNAL_PIN)) {
     defrost_last_state = true;
     Serial.println("START DEFROST");
@@ -159,6 +158,17 @@ void loop() {
       buf_index++;
       serial_buf[buf_index] = '\0';
     }
+  }
+
+  if((uint8_t)((uint8_t)(millis()/1000) - timer_start) >= CONN_CHECK_INTERVAL_S) {
+    timer_start = millis()/1000;
+    checkEthernetConnection();
+    connectToMqttCheck();
+  }
+
+  if((uint8_t)((uint8_t)(millis()/1000) - timer_start_60) >= 60) {
+    timer_start_60 = millis()/1000;
+    on60sec();
   }
 }
 
@@ -403,7 +413,7 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
   connectedMQTT = false;
   Serial.println(F("Disconnected from MQTT."));
   if (eth.connected()) {
-    timer.after(2000, connectToMqtt);
+    connectToMqtt();
   }
 }
 
@@ -429,16 +439,6 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
       processMQTTGet(message + cmd_len + 1);
     } else if (!strcmp(cmd, "save")) {
       processMQTTSave();
-    // ============== TEMPORARY CODE ==================
-    } else if (!strcmp(cmd, "wp off")) {
-      switchWP(false);
-    } else if (!strcmp(cmd, "wp on")) {
-      switchWP(true);
-    } else if (!strcmp(cmd, "hp off")) {
-      switchHP(false);
-    } else if (!strcmp(cmd, "hp on")) {
-      switchHP(true);
-    // ================================================
     } else {
       Serial.println(F("Unknown command"));
       mqttClient.publish(console_out_topic, 0, false, "Unknown command");
@@ -484,13 +484,11 @@ void switchWP(bool toggle) {
 void switchHP(bool toggle) {
   Wire.beginTransmission(SLAVE_ADDR);
   if(toggle) {
-    Wire.write(0x40);
-    Serial.println(F("Switching heating pump on"));
-    mqttClient.publish(console_out_topic, 0, false, "Switching heating pump on");
-  } else {
     Wire.write(0x41);
+    Serial.println(F("Switching heating pump on"));
+  } else {
+    Wire.write(0x40);
     Serial.println(F("Switching heating pump off"));
-    mqttClient.publish(console_out_topic, 0, false, "Switching heating pump off");
   }
   Wire.endTransmission();
 }
@@ -600,6 +598,20 @@ void processMQTTSet(char *param) {
     } else {
       strcpy(buf, "Wrong values for hc");
     }
+  // ================ TEMPORARY CODE =============
+  } else if (!strncmp(param, "hp_on", 5)) {
+    switchHP(true);
+    strcpy(buf, "HP ON");
+  } else if (!strncmp(param, "hp_off", 6)) {
+    switchHP(false);
+    strcpy(buf, "HP OFF");
+  } else if (!strncmp(param, "wp_on", 5)) {
+    switchWP(true);
+    strcpy(buf, "WP ON");
+  } else if (!strncmp(param, "wp_off", 6)) {
+    switchWP(false);
+    strcpy(buf, "WP OFF");
+  // =============================================
   } else {
     snprintf(buf, sizeof(buf), "Unknown parameter %s", param);
   }
