@@ -864,6 +864,7 @@ void onWireReceive(int bytes) {
       break;
     case 0x41:
       Serial.println(F("switching on heat pump"));
+      alarm_flag = false;
       digitalWrite(HEAT_ON_SWITCH_PIN, LOW);
       break;
     // =====================================
