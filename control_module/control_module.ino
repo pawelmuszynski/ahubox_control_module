@@ -92,7 +92,7 @@ const char *const help_content[] PROGMEM = {
   line20, line21, line22, line23, line24
 };
 */
-const uint8_t n_probes = 16;
+const uint8_t n_probes = 15;
 
 struct EnergyData {
   uint16_t voltage, current, power, energy, pf;
@@ -104,13 +104,12 @@ struct __attribute__((aligned(4))) PidParams {
 };
 
 struct __attribute__((aligned(4))) PidData {
-  uint16_t sv;
+  int16_t sv;
   uint8_t output;
 };
 
 struct TempData {
-  uint16_t heat, ret;
-  int16_t outside;
+  int16_t heat, ret, outside;
 };
 
 struct HC {
@@ -702,9 +701,18 @@ void getSensorProbeValues(uint8_t i) {
   energy_probes[i].power = pzem.power();      // x 0.1 W
   energy_probes[i].pf = pzem.pf();            // x 0.01
   ds.requestTemperatures();
-  temp_probes[i].heat = (ds.getTemp(heat_ds) * 78125 + 50000) / 100000;        // x 0.01 °C
-  temp_probes[i].ret = (ds.getTemp(return_ds) * 78125 + 50000) / 100000;       // x 0.01 °C
-  temp_probes[i].outside = (ds.getTemp(outside_ds) * 78125 + 50000) / 100000;  // x 0.01 °C
+  int16_t temp;
+  temp = ds.getTemp(heat_ds);
+  if(temp != -7040) temp_probes[i].heat = (temp * 78125 + 50000) / 100000;       // x 0.01 °C
+  else Serial.println(F("Error reading heat temperature"));
+
+  temp = ds.getTemp(return_ds);
+  if(temp != -7040) temp_probes[i].ret = (temp * 78125 + 50000) / 100000;        // x 0.01 °C
+  else Serial.println(F("Error reading return temperature"));
+
+  temp = ds.getTemp(outside_ds);
+  if(temp != -7040) temp_probes[i].outside = (temp * 78125 + 50000) / 100000;    // x 0.01 °C
+  else Serial.println(F("Error reading outside temperature"));
 }
 
 void on4Sec() {

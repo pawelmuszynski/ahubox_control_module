@@ -17,11 +17,11 @@ class PID
   #define P_ON_E 1
 
   //commonly used functions **************************************************************************
-    PID(uint16_t*, uint8_t*, uint16_t*,        // * constructor.  links the PID to the Input, Output, and 
+    PID(int16_t*, uint8_t*, int16_t*,        // * constructor.  links the PID to the Input, Output, and
         float, float, float, int, int);//   Setpoint.  Initial tuning parameters are also set here.
                                           //   (overload for specifying proportional mode)
 
-    PID(uint16_t*, uint8_t*, uint16_t*,        // * constructor.  links the PID to the Input, Output, and 
+    PID(int16_t*, uint8_t*, int16_t*,        // * constructor.  links the PID to the Input, Output, and
         float, float, float, int);     //   Setpoint.  Initial tuning parameters are also set here
 	
     void SetMode(int Mode);               // * sets PID to either Manual (0) or Auto (non-0)
@@ -54,11 +54,11 @@ class PID
 										  
 										  
   //Display functions ****************************************************************
-	float GetKp();						  // These functions query the pid for interal values.
-	float GetKi();						  //  they were created mainly for the pid front-end,
-	float GetKd();						  // where it's important to know what is actually 
-	int GetMode();						  //  inside the PID.
-	int GetDirection();					  //
+	float GetKp();              // These functions query the pid for interal values.
+	float GetKi();              //  they were created mainly for the pid front-end,
+	float GetKd();              // where it's important to know what is actually
+	int GetMode();              //  inside the PID.
+	int GetDirection();         //
 
   private:
 	void Initialize();
@@ -74,10 +74,10 @@ class PID
 	int controllerDirection;
 	int pOn;
 
-  uint16_t *myInput;              // * Pointers to the Input, Output, and Setpoint variables
+  int16_t *myInput;              // * Pointers to the Input, Output, and Setpoint variables
   uint8_t *myOutput;             //   This creates a hard link between the variables and the 
-  uint16_t *mySetpoint;           //   PID, freeing the user from having to constantly tell us
-                                  //   what these values are.  with pointers we'll just know.
+  int16_t *mySetpoint;           //   PID, freeing the user from having to constantly tell us
+                                 //   what these values are.  with pointers we'll just know.
 			  
 	uint16_t lastTime;
 	float outputSum, lastInput;

@@ -57,13 +57,12 @@ struct PidParams {
 };
 
 struct PidData {
-  uint16_t sv;
+  int16_t sv;
   uint8_t output;
 };
 
 struct TempData {
-  uint16_t heat, ret;
-  int16_t outside;
+  int16_t heat, ret, outside;
 };
 
 struct HC {
@@ -322,14 +321,14 @@ void on60sec() {
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.pf / 100), (uint16_t)(ed.pf % 100));
   updateDomoticz(DOMOTICZ_PF_IDX, buf);
 
-  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(td.heat / 100), (uint16_t)(td.heat % 100));
+  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.heat / 100), (int16_t)(td.heat % 100));
   updateDomoticz(DOMOTICZ_HEAT_IDX, buf);
-  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(td.ret / 100), (uint16_t)(td.ret % 100));
+  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.ret / 100), (int16_t)(td.ret % 100));
   updateDomoticz(DOMOTICZ_RETURN_IDX, buf);
   snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.outside / 100), (int16_t)(td.outside % 100));
   updateDomoticz(DOMOTICZ_OUTSIDE_IDX, buf);
 
-  snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(pd.sv / 100), (uint16_t)(pd.sv % 100));
+  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(pd.sv / 100), (int16_t)(pd.sv % 100));
   updateDomoticz(DOMOTICZ_SV_IDX, buf);
   ultoa(map(pd.output, 0, 255, 0, 100), buf, 10);
   updateDomoticz(DOMOTICZ_OUTPUT_IDX, buf);
@@ -542,7 +541,7 @@ void processMQTTGet(char *param) {
     TempData td;
     Wire.requestFrom(SLAVE_ADDR, sizeof(td));
     Wire.readBytes((byte *)&td, sizeof(td));
-    snprintf(buf, sizeof(buf), "%hu %hu %hd", td.heat, td.ret, td.outside);
+    snprintf(buf, sizeof(buf), "%hd %hd %hd", td.heat, td.ret, td.outside);
   } else if (!strcmp(param, "energy")) {
     Serial.println(F("Calling for energy"));
     Wire.beginTransmission(SLAVE_ADDR);
