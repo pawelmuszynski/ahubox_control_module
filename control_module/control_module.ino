@@ -280,7 +280,7 @@ void printHelp() {
   }
 }
 */
-int16_t getHCValue(HC hc, int16_t outside_temp) {
+int16_t getHCValue(HC *hc, const int16_t outside_temp) {
   /* 
     Linear approximation between given setpoints
     Generic math formula:
@@ -299,21 +299,21 @@ int16_t getHCValue(HC hc, int16_t outside_temp) {
   int16_t th1, th2, to1;
 
   if(outside_temp >= 1000) {
-    return hc.hc_10;
+    return hc->hc_10;
   } else if(outside_temp >= 500 and outside_temp < 1000) {
-    th1 = hc.hc_5;
-    th2 = hc.hc_10;
+    th1 = hc->hc_5;
+    th2 = hc->hc_10;
     to1 = 500;
   } else if(outside_temp >= 0 and outside_temp < 500) {
-    th1 = hc.hc_0;
-    th2 = hc.hc_5;
+    th1 = hc->hc_0;
+    th2 = hc->hc_5;
     to1 = 0;
   } else if(outside_temp >= -500 and outside_temp < 0) {
-    th1 = hc.hc_minus5;
-    th2 = hc.hc_0;
+    th1 = hc->hc_minus5;
+    th2 = hc->hc_0;
     to1 = -500;
   } else if(outside_temp < -500) {
-    return hc.hc_minus5;
+    return hc->hc_minus5;
   }
   return ((th2 - th1) * (outside_temp - to1)) / 500 + th1;
 }
@@ -653,7 +653,7 @@ void on4Sec() {
 void on60Sec() {
   Serial.println(F("====== on 60 sec ======"));
   avgCalcAll();
-  pid_data.sv = getHCValue(heat_curve, temp_avg.outside);
+  pid_data.sv = getHCValue(&heat_curve, &temp_avg.outside);
   analogWrite(SV_PWM_PIN, pid_data.output);
   showValues();
 }
