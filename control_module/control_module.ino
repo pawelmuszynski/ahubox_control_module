@@ -95,7 +95,7 @@ const char *const help_content[] PROGMEM = {
 const uint8_t n_probes = 15;
 
 struct EnergyData {
-  uint16_t voltage, current, power, energy, pf;
+  uint16_t voltage, current, power, pf;
 };
 
 struct __attribute__((aligned(4))) PidParams {
@@ -245,95 +245,13 @@ int16_t avgCalc(int16_t *probes, const uint8_t &n_probes) {
 */
 
 void avgCalcAll() {
-
-  energy_avg.voltage = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    energy_avg.voltage += energy_probes[i].voltage / n_probes;
-  }
-
-  energy_avg.current = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    energy_avg.current += energy_probes[i].current / n_probes;
-  }
-
-  energy_avg.power = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    energy_avg.power += energy_probes[i].power / n_probes;
-  }
-
-  energy_avg.pf = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    energy_avg.pf += energy_probes[i].pf / n_probes;
-  }
-
-  temp_avg.heat = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    temp_avg.heat += temp_probes[i].heat / n_probes;
-  }
-
-  temp_avg.ret = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    temp_avg.ret += temp_probes[i].ret / n_probes;
-  }
-
-  temp_avg.outside = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    temp_avg.outside += temp_probes[i].outside / n_probes;
-  }
-
-
-  /*
-  int32_t sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += energy_probes[i].voltage;
-  }
-  energy_avg.voltage = sum/n_probes;
-
-  sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += energy_probes[i].current;
-  }
-  energy_avg.current = sum/n_probes;
-
-  sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += energy_probes[i].power;
-  }
-  energy_avg.power = sum/n_probes;
-
-  sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += energy_probes[i].pf;
-  }
-  energy_avg.pf = sum/n_probes;
-
-  sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += temp_probes[i].heat;
-  }
-  temp_avg.heat = sum/n_probes;
-
-  sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += temp_probes[i].ret;
-  }
-  temp_avg.ret = sum/n_probes;
-
-  sum = 0;
-  for(uint8_t i = 0; i < n_probes; i++) {
-    sum += temp_probes[i].outside;
-  }
-  temp_avg.outside = sum/n_probes;
-*/
-
-  /*
-int32_t voltage_sum = 0;
-int32_t current_sum = 0;
-int32_t power_sum = 0;
-int32_t pf_sum = 0;
-int32_t heat_sum = 0;
-int32_t ret_sum = 0;
-int32_t outside_sum = 0;
+  uint32_t voltage_sum = 0;
+  uint32_t current_sum = 0;
+  uint32_t power_sum = 0;
+  uint32_t pf_sum = 0;
+  int32_t heat_sum = 0;
+  int32_t ret_sum = 0;
+  int32_t outside_sum = 0;
 
   for(uint8_t i = 0; i < n_probes; i++) {
     voltage_sum += energy_probes[i].voltage;
@@ -344,15 +262,14 @@ int32_t outside_sum = 0;
     ret_sum += temp_probes[i].ret;
     outside_sum += temp_probes[i].outside;
   }
-  Serial.println("outside sum: " + String(outside_sum));
-  energy_avg.voltage = voltage_sum/n_probes;
-  energy_avg.current = current_sum/n_probes;
-  energy_avg.power = power_sum/n_probes;
-  energy_avg.pf = pf_sum/n_probes;
-  temp_avg.heat = heat_sum/n_probes;
-  temp_avg.ret = ret_sum/n_probes;
-  temp_avg.outside = outside_sum/n_probes;
-*/
+
+  energy_avg.voltage = voltage_sum / n_probes;
+  energy_avg.current = current_sum / n_probes;
+  energy_avg.power = power_sum / n_probes;
+  energy_avg.pf = heat_sum / n_probes;
+  temp_avg.heat = heat_sum / n_probes;
+  temp_avg.ret = ret_sum / n_probes;
+  temp_avg.outside = outside_sum / n_probes;
 }
 /*
 void printHelp() {

@@ -48,7 +48,7 @@ bool connectedMQTT = false;
 bool defrost_last_state = false;
 
 struct EnergyData {
-  uint16_t voltage, current, power, energy, pf;
+  uint16_t voltage, current, power, pf;
 };
 
 struct PidParams {
