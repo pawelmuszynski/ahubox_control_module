@@ -325,7 +325,7 @@ void on60sec() {
     return;
   }
 
-  showValues(td, ed, pd);
+  showValues(&td, &ed, &pd);
 
   char buf[10];
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.voltage / 10), (uint16_t)(ed.voltage % 10));
@@ -378,25 +378,25 @@ void checkEthernetConnection() {
   }
 }
 
-void showValues(TempData td, EnergyData ed, PidData pd) {
+void showValues(const TempData *td, const EnergyData *ed, const PidData *pd) {
   char buf[30];
-  snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", ed.voltage / 10, ed.voltage % 10);
+  snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", ed->voltage / 10, ed->voltage % 10);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "Current: %01u.%03u A", ed.current / 1000, ed.current % 1000);
+  snprintf(buf, sizeof(buf), "Current: %01u.%03u A", ed->current / 1000, ed->current % 1000);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "Power: %01u.%01u W", ed.power / 10, ed.power % 10);
+  snprintf(buf, sizeof(buf), "Power: %01u.%01u W", ed->power / 10, ed->power % 10);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "PF: %01u.%02u", ed.pf / 100, ed.pf % 100);
+  snprintf(buf, sizeof(buf), "PF: %01u.%02u", ed->pf / 100, ed->pf % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", td.heat / 100, td.heat % 100);
+  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", td->heat / 100, td->heat % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", td.ret / 100, td.ret % 100);
+  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", td->ret / 100, td->ret % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", td.outside / 100, td.outside % 100);
+  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", td->outside / 100, td->outside % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", pd.sv / 100, pd.sv % 100);
+  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", pd->sv / 100, pd->sv % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "set power: %d (%d%%)", pd.output, map(pd.output, 0, 255, 0, 100));
+  snprintf(buf, sizeof(buf), "set power: %d (%d%%)", pd->output, map(pd->output, 0, 255, 0, 100));
   Serial.println(buf);
 }
 
@@ -467,6 +467,7 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
       processMQTTGet(message + cmd_len + 1);
     } else if (!strcmp(cmd, "save")) {
       processMQTTSave();
+      mqttClient.publish(console_out_topic, 0, false, (const char*)F("Saving to EEPROM"));
     } else {
       Serial.println(F("Unknown command"));
       mqttClient.publish(console_out_topic, 0, false, "Unknown command");

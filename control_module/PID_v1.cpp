@@ -18,7 +18,7 @@
  *    reliable defaults, so we need to have the user set them.
  ***************************************************************************/
 PID::PID(int16_t* Input, uint8_t* Output, int16_t* Setpoint,
-        float Kp, float Ki, float Kd, int POn, int ControllerDirection)
+        const float Kp, const float Ki, const float Kd, const int8_t POn, const int8_t ControllerDirection)
 {
     myOutput = Output;
     myInput = Input;
@@ -42,7 +42,7 @@ PID::PID(int16_t* Input, uint8_t* Output, int16_t* Setpoint,
  ***************************************************************************/
 
 PID::PID(int16_t* Input, uint8_t* Output, int16_t* Setpoint,
-        float Kp, float Ki, float Kd, int ControllerDirection)
+        const float Kp, const float Ki, const float Kd, const int8_t ControllerDirection)
     :PID::PID(Input, Output, Setpoint, Kp, Ki, Kd, P_ON_E, ControllerDirection)
 {
 
@@ -75,21 +75,21 @@ bool PID::Compute()
       else if(outputSum < outMin) outputSum= outMin;
 
       /*Add Proportional on Error, if P_ON_E is specified*/
-	   float output;
+      float output;
       if(pOnE) output = kp * error;
       else output = 0;
 
       /*Compute Rest of PID Output*/
       output += outputSum - kd * dInput;
 
-	    if(output > outMax) output = outMax;
+      if(output > outMax) output = outMax;
       else if(output < outMin) output = outMin;
-	    *myOutput = output;
+      *myOutput = output;
 
       /*Remember some variables for next time*/
       lastInput = input;
       lastTime = now;
-	    return true;
+      return true;
    }
    else return false;
 }
@@ -99,7 +99,7 @@ bool PID::Compute()
  * it's called automatically from the constructor, but tunings can also
  * be adjusted on the fly during normal operation
  ******************************************************************************/
-void PID::SetTunings(float Kp, float Ki, float Kd, int POn)
+void PID::SetTunings(const float Kp, const float Ki, const float Kd, const int8_t POn)
 {
    if (Kp<0 || Ki<0 || Kd<0) return;
 
@@ -114,24 +114,25 @@ void PID::SetTunings(float Kp, float Ki, float Kd, int POn)
    kd = Kd / SampleTime;
 
   if(controllerDirection ==REVERSE)
-   {
-      kp = (0 - kp);
-      ki = (0 - ki);
-      kd = (0 - kd);
-   }
+  {
+    kp = (0 - kp);
+    ki = (0 - ki);
+    kd = (0 - kd);
+  }
 }
 
 /* SetTunings(...)*************************************************************
  * Set Tunings using the last-rembered POn setting
  ******************************************************************************/
-void PID::SetTunings(float Kp, float Ki, float Kd){
+void PID::SetTunings(const float Kp, const float Ki, const float Kd)
+{
     SetTunings(Kp, Ki, Kd, pOn); 
 }
 
 /* SetSampleTime(...) *********************************************************
  * sets the period, in seconds, at which the calculation is performed
  ******************************************************************************/
-void PID::SetSampleTime(uint16_t NewSampleTime)
+void PID::SetSampleTime(const uint16_t NewSampleTime)
 {
    if (NewSampleTime > 0)
    {
@@ -151,7 +152,7 @@ void PID::SetSampleTime(uint16_t NewSampleTime)
  *  want to clamp it from 0-125.  who knows.  at any rate, that can all be done
  *  here.
  **************************************************************************/
-void PID::SetOutputLimits(uint8_t Min, uint8_t Max)
+void PID::SetOutputLimits(const uint8_t Min, const uint8_t Max)
 {
    if(Min >= Max) return;
    outMin = Min;
@@ -159,11 +160,11 @@ void PID::SetOutputLimits(uint8_t Min, uint8_t Max)
 
    if(inAuto)
    {
-	   if(*myOutput > outMax) *myOutput = outMax;
-	   else if(*myOutput < outMin) *myOutput = outMin;
+     if(*myOutput > outMax) *myOutput = outMax;
+     else if(*myOutput < outMin) *myOutput = outMin;
 
-	   if(outputSum > outMax) outputSum= outMax;
-	   else if(outputSum < outMin) outputSum= outMin;
+     if(outputSum > outMax) outputSum= outMax;
+     else if(outputSum < outMin) outputSum= outMin;
    }
 }
 
@@ -172,7 +173,7 @@ void PID::SetOutputLimits(uint8_t Min, uint8_t Max)
  * when the transition from manual to auto occurs, the controller is
  * automatically initialized
  ******************************************************************************/
-void PID::SetMode(int Mode)
+void PID::SetMode(const int8_t Mode)
 {
     bool newAuto = (Mode == AUTOMATIC);
     if(newAuto && !inAuto)
@@ -183,7 +184,7 @@ void PID::SetMode(int Mode)
 }
 
 /* Initialize()****************************************************************
- *	does all the things that need to happen to ensure a bumpless transfer
+ *  does all the things that need to happen to ensure a bumpless transfer
  *  from manual to automatic mode.
  ******************************************************************************/
 void PID::Initialize()
@@ -200,11 +201,11 @@ void PID::Initialize()
  * know which one, because otherwise we may increase the output when we should
  * be decreasing.  This is called from the constructor.
  ******************************************************************************/
-void PID::SetControllerDirection(int Direction)
+void PID::SetControllerDirection(const int8_t Direction)
 {
    if(inAuto && Direction !=controllerDirection)
    {
-	    kp = (0 - kp);
+      kp = (0 - kp);
       ki = (0 - ki);
       kd = (0 - kd);
    }
@@ -219,6 +220,5 @@ void PID::SetControllerDirection(int Direction)
 float PID::GetKp(){ return  kp; }
 float PID::GetKi(){ return  ki / SampleTime;}
 float PID::GetKd(){ return  kd * SampleTime;}
-int PID::GetMode(){ return  inAuto ? AUTOMATIC : MANUAL;}
-int PID::GetDirection(){ return controllerDirection;}
-
+int8_t PID::GetMode(){ return  inAuto ? AUTOMATIC : MANUAL;}
+int8_t PID::GetDirection(){ return controllerDirection;}
