@@ -4,8 +4,9 @@
 #include <AsyncMqtt_Generic.h> // by Mavin Roger, Khoi Hoang
 #include <EEPROM.h>
 
-#define CONN_CHECK_INTERVAL_S 5
+#define DEV
 
+#define CONN_CHECK_INTERVAL_S 5
 #define WIRE_DATA_FRAME 0xAA  // It identifies data frame (crc is not enough). It should be equal on both sides.
 #define SLAVE_ADDR 8
 #define CSPIN 16
@@ -15,20 +16,35 @@
 #define DEFAULT_MAC_ADDR 0x00, 0x01, 0xDE, 0xAD, 0xBE, 0xEF
 #define DEFAULT_MQTT_SERVER "10.0.2.10"
 #define DEFAULT_MQTT_PORT 1883
-#define DEFAULT_MQTT_CLIENT_ID "heat_pump_dev"
-#define MQTT_CONSOLE_IN "heat_pump_dev/console/in"
-#define MQTT_CONSOLE_OUT "heat_pump_dev/console/out"
 #define MQTT_DOMOTICZ_IN "domoticz/in"
 
-#define DOMOTICZ_VOLTAGE_IDX 117
-#define DOMOTICZ_CURRENT_IDX 118
-#define DOMOTICZ_POWER_IDX 116
-#define DOMOTICZ_PF_IDX 119
-#define DOMOTICZ_HEAT_IDX 4
-#define DOMOTICZ_RETURN_IDX 6
-#define DOMOTICZ_OUTSIDE_IDX 7
-#define DOMOTICZ_SV_IDX 114
-#define DOMOTICZ_OUTPUT_IDX 11
+#ifdef DEV_ENV
+  #define DEFAULT_MQTT_CLIENT_ID "heat_pump_dev"
+  #define MQTT_CONSOLE_IN "heat_pump_dev/console/in"
+  #define MQTT_CONSOLE_OUT "heat_pump_dev/console/out"
+  #define DOMOTICZ_VOLTAGE_IDX 121
+  #define DOMOTICZ_CURRENT_IDX 122
+  #define DOMOTICZ_POWER_IDX 116
+  #define DOMOTICZ_PF_IDX 120
+  #define DOMOTICZ_HEAT_IDX 4
+  #define DOMOTICZ_RETURN_IDX 6
+  #define DOMOTICZ_OUTSIDE_IDX 7
+  #define DOMOTICZ_SV_IDX 114
+  #define DOMOTICZ_OUTPUT_IDX 11
+#else
+  #define DEFAULT_MQTT_CLIENT_ID "heat_pump"
+  #define MQTT_CONSOLE_IN "heat_pump/console/in"
+  #define MQTT_CONSOLE_OUT "heat_pump/console/out"
+  #define DOMOTICZ_VOLTAGE_IDX 117
+  #define DOMOTICZ_CURRENT_IDX 118
+  #define DOMOTICZ_POWER_IDX 109
+  #define DOMOTICZ_PF_IDX 119
+  #define DOMOTICZ_HEAT_IDX 19
+  #define DOMOTICZ_RETURN_IDX 20
+  #define DOMOTICZ_OUTSIDE_IDX 2
+  #define DOMOTICZ_SV_IDX 3
+  #define DOMOTICZ_OUTPUT_IDX 115
+#endif
 
 #define DEFAULT_SETTINGS_INDICATOR_ADDR 0x00  // uint8_t
 #define MAC_ADDR_ADDR 0x01  // to 0x06 (6x uint8_t)
@@ -92,14 +108,14 @@ void setup() {
     EEPROM.get(MAC_ADDR_ADDR, mac);
     EEPROM.get(MQTT_SERVER_ADDR, mqtt_server);
     EEPROM.get(MQTT_PORT_ADDR, mqtt_port);
-    EEPROM.get(MQTT_CLIENT_ID_ADDR, mqtt_client_id);
+    //EEPROM.get(MQTT_CLIENT_ID_ADDR, mqtt_client_id);
   }
   else {
     EEPROM.put(DEFAULT_SETTINGS_INDICATOR_ADDR, (uint8_t)DEFAULT_SETTINGS_INDICATOR);
     EEPROM.put(MAC_ADDR_ADDR, mac);
     EEPROM.put(MQTT_SERVER_ADDR, mqtt_server);
     EEPROM.put(MQTT_PORT_ADDR, mqtt_port);
-    EEPROM.put(MQTT_CLIENT_ID_ADDR, mqtt_client_id);
+    //EEPROM.put(MQTT_CLIENT_ID_ADDR, mqtt_client_id);
     Serial.println(F("Setting factory defaults"));
   }
   EEPROM.commit();
