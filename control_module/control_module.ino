@@ -619,17 +619,36 @@ void getSensorProbeValues(uint8_t i) {
   energy_probes[i].pf = pzem.pf();            // x 0.01
   ds.requestTemperatures();
   int16_t temp;
-  temp = ds.getTemp(heat_ds);
-  if(temp != -7040) temp_probes[i].heat = (temp * 78125 + 50000) / 100000;       // x 0.01 °C
-  else Serial.println(F("Error reading heat temperature"));
 
-  temp = ds.getTemp(return_ds);
-  if(temp != -7040) temp_probes[i].ret = (temp * 78125 + 50000) / 100000;        // x 0.01 °C
-  else Serial.println(F("Error reading return temperature"));
+  for(uint8_t i=0; i<3; i++) {
+    temp = ds.getTemp(heat_ds);
+    if(temp != -7040) {
+      temp_probes[i].heat = ((int32_t)temp * 78125 + 50000) / 100000;       // x 0.01 °C
+      break;
+    } else {
+      Serial.println(F("Error reading heat temperature"));
+    }
+  }
 
-  temp = ds.getTemp(outside_ds);
-  if(temp != -7040) temp_probes[i].outside = (temp * 78125 + 50000) / 100000;    // x 0.01 °C
-  else Serial.println(F("Error reading outside temperature"));
+  for(uint8_t i=0; i<3; i++) {
+    temp = ds.getTemp(return_ds);
+    if(temp != -7040) {
+      temp_probes[i].ret = ((int32_t)temp * 78125 + 50000) / 100000;       // x 0.01 °C
+      break;
+    } else {
+      Serial.println(F("Error reading return temperature"));
+    }
+  }
+
+  for(uint8_t i=0; i<3; i++) {
+    temp = ds.getTemp(outside_ds);
+    if(temp != -7040) {
+      temp_probes[i].outside = ((int32_t)temp * 78125 + 50000) / 100000;       // x 0.01 °C
+      break;
+    } else {
+      Serial.println(F("Error reading outside temperature"));
+    }
+  }
 }
 
 void on4Sec() {
