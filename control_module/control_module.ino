@@ -158,15 +158,15 @@ uint8_t wire_cmd;
 void printPIDParams() {
   char buf[20];
   Serial.println(F("-= PID =-"));
-  snprintf(buf, sizeof(buf), (const char*)F("kp = %f"), pid_params.kp);
+  snprintf(buf, sizeof(buf), "kp = %f", pid_params.kp);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("ki = %f"), pid_params.ki);
+  snprintf(buf, sizeof(buf), "ki = %f", pid_params.ki);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("kd = %f"), pid_params.kd);
+  snprintf(buf, sizeof(buf), "kd = %f", pid_params.kd);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("pid_min = %uud"), pid_params.omin);
+  snprintf(buf, sizeof(buf), "pid_min = %uud", pid_params.omin);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("pid_max = %uud"), pid_params.omax);
+  snprintf(buf, sizeof(buf), "pid_max = %uud", pid_params.omax);
   Serial.println(buf);
   Serial.println();
 }
@@ -174,13 +174,13 @@ void printPIDParams() {
 void printHCParams() {
   char buf[20];
   Serial.println(F("-= Heating curve =-"));
-  snprintf(buf, sizeof(buf), (const char*)F("hc_minus5 = %d"), heat_curve.hc_minus5);
+  snprintf(buf, sizeof(buf), "hc_minus5 = %d", heat_curve.hc_minus5);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("hc_0 = %d"), heat_curve.hc_0);
+  snprintf(buf, sizeof(buf), "hc_0 = %d", heat_curve.hc_0);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("hc_5 = %d"), heat_curve.hc_5);
+  snprintf(buf, sizeof(buf), "hc_5 = %d", heat_curve.hc_5);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("hc_10 = %d"), heat_curve.hc_10);
+  snprintf(buf, sizeof(buf), "hc_10 = %d", heat_curve.hc_10);
   Serial.println(buf);
   Serial.println();
 }
@@ -215,23 +215,23 @@ void printAvailableDS() {
 
 void showValues() {
   char buf[30];
-  snprintf(buf, sizeof(buf), (const char*)F("Voltage: %01u.%01u V"), energy_avg.voltage / 10, energy_avg.voltage % 10);
+  snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", energy_avg.voltage / 10, energy_avg.voltage % 10);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("Current: %01u.%03u A"), energy_avg.current / 1000, energy_avg.current % 1000);
+  snprintf(buf, sizeof(buf), "Current: %01u.%03u A", energy_avg.current / 1000, energy_avg.current % 1000);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("Power: %01u.%01u W"), energy_avg.power / 10, energy_avg.power % 10);
+  snprintf(buf, sizeof(buf), "Power: %01u.%01u W", energy_avg.power / 10, energy_avg.power % 10);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("PF: %01u.%02u"), energy_avg.pf / 100, energy_avg.pf % 100);
+  snprintf(buf, sizeof(buf), "PF: %01u.%02u", energy_avg.pf / 100, energy_avg.pf % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("heat_temp: %01d.%02d °C"), temp_avg.heat / 100, temp_avg.heat % 100);
+  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", temp_avg.heat / 100, temp_avg.heat % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("return_temp: %01d.%02d °C"), temp_avg.ret / 100, temp_avg.ret % 100);
+  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", temp_avg.ret / 100, temp_avg.ret % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("outside_temp: %01d.%02d °C"), temp_avg.outside / 100, temp_avg.outside % 100);
+  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", temp_avg.outside / 100, temp_avg.outside % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("pid_sv: %01d.%02d °C"), pid_data.sv / 100, pid_data.sv % 100);
+  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", pid_data.sv / 100, pid_data.sv % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), (const char*)F("set power: %d (%d%%)"), pid_data.output, map(pid_data.output, 0, 255, 0, 100));
+  snprintf(buf, sizeof(buf), "set power: %d (%d%%)", pid_data.output, map(pid_data.output, 0, 255, 0, 100));
   Serial.println(buf);
 }
 /*
@@ -266,7 +266,7 @@ void avgCalcAll() {
   energy_avg.voltage = voltage_sum / n_probes;
   energy_avg.current = current_sum / n_probes;
   energy_avg.power = power_sum / n_probes;
-  energy_avg.pf = heat_sum / n_probes;
+  energy_avg.pf = pf_sum / n_probes;
   temp_avg.heat = heat_sum / n_probes;
   temp_avg.ret = ret_sum / n_probes;
   temp_avg.outside = outside_sum / n_probes;
@@ -280,7 +280,7 @@ void printHelp() {
   }
 }
 */
-int16_t getHCValue(HC *hc, const int16_t outside_temp) {
+int16_t getHCValue(const int16_t outside_temp) {
   /* 
     Linear approximation between given setpoints
     Generic math formula:
@@ -296,24 +296,30 @@ int16_t getHCValue(HC *hc, const int16_t outside_temp) {
     f(to) = ((th2 - th1) * (to - to1)) / 500 + th1
   */
 
-  int16_t th1, th2, to1;
+  int32_t th1, th2, to1;
 
   if(outside_temp >= 1000) {
-    return hc->hc_10;
+    return heat_curve.hc_10;
   } else if(outside_temp >= 500 and outside_temp < 1000) {
-    th1 = hc->hc_5;
-    th2 = hc->hc_10;
+    th1 = heat_curve.hc_5;
+    th2 = heat_curve.hc_10;
     to1 = 500;
   } else if(outside_temp >= 0 and outside_temp < 500) {
-    th1 = hc->hc_0;
-    th2 = hc->hc_5;
+    th1 = heat_curve.hc_0;
+    th2 = heat_curve.hc_5;
     to1 = 0;
   } else if(outside_temp >= -500 and outside_temp < 0) {
-    th1 = hc->hc_minus5;
-    th2 = hc->hc_0;
+    th1 = heat_curve.hc_minus5;
+    th2 = heat_curve.hc_0;
     to1 = -500;
   } else if(outside_temp < -500) {
-    return hc->hc_minus5;
+    return heat_curve.hc_minus5;
+  }
+  int32_t *ptr = malloc(sizeof(int32_t));
+  if(! ptr) {
+    Serial.println(F("NULL POINTER"));
+  } else {
+    free(ptr);
   }
   return ((th2 - th1) * (outside_temp - to1)) / 500 + th1;
 }
@@ -620,7 +626,7 @@ void getSensorProbeValues(uint8_t i) {
   ds.requestTemperatures();
   int16_t temp;
 
-  for(uint8_t i=0; i<3; i++) {
+  for(uint8_t j=0; j<3; j++) {
     temp = ds.getTemp(heat_ds);
     if(temp != -7040) {
       temp_probes[i].heat = ((int32_t)temp * 78125 + 50000) / 100000;       // x 0.01 °C
@@ -630,7 +636,7 @@ void getSensorProbeValues(uint8_t i) {
     }
   }
 
-  for(uint8_t i=0; i<3; i++) {
+  for(uint8_t j=0; j<3; j++) {
     temp = ds.getTemp(return_ds);
     if(temp != -7040) {
       temp_probes[i].ret = ((int32_t)temp * 78125 + 50000) / 100000;       // x 0.01 °C
@@ -640,7 +646,7 @@ void getSensorProbeValues(uint8_t i) {
     }
   }
 
-  for(uint8_t i=0; i<3; i++) {
+  for(uint8_t j=0; j<3; j++) {
     temp = ds.getTemp(outside_ds);
     if(temp != -7040) {
       temp_probes[i].outside = ((int32_t)temp * 78125 + 50000) / 100000;       // x 0.01 °C
@@ -672,7 +678,7 @@ void on4Sec() {
 void on60Sec() {
   Serial.println(F("====== on 60 sec ======"));
   avgCalcAll();
-  pid_data.sv = getHCValue(&heat_curve, temp_avg.outside);
+  pid_data.sv = getHCValue(temp_avg.outside);
   analogWrite(SV_PWM_PIN, pid_data.output);
   showValues();
 }
@@ -759,10 +765,10 @@ void onWireResponseRequest() {
 
 void onWireReceive(int bytes) {
   char buf[25];
-  snprintf(buf, sizeof(buf), (const char*)F("Wire received %d bytes."), bytes);
+  snprintf(buf, sizeof(buf), "Wire received %d bytes.", bytes);
   Serial.println(buf);
   if(Wire.available()) wire_cmd = Wire.read();
-  snprintf(buf, sizeof(buf), (const char*)F("Received cmd code: %hhu"), wire_cmd);
+  snprintf(buf, sizeof(buf), "Received cmd code: %hhu", wire_cmd);
   Serial.println(buf);
   switch (wire_cmd) {
     case 0x01:

@@ -4,7 +4,7 @@
 #include <AsyncMqtt_Generic.h> // by Mavin Roger, Khoi Hoang
 #include <EEPROM.h>
 
-#define DEV
+//#define DEV
 
 #define CONN_CHECK_INTERVAL_S 5
 #define WIRE_DATA_FRAME 0xAA  // It identifies data frame (crc is not enough). It should be equal on both sides.
@@ -467,7 +467,7 @@ void onMqttMessage(char *topic, char *payload, const AsyncMqttClientMessagePrope
       processMQTTGet(message + cmd_len + 1);
     } else if (!strcmp(cmd, "save")) {
       processMQTTSave();
-      mqttClient.publish(console_out_topic, 0, false, (const char*)F("Saving to EEPROM"));
+      mqttClient.publish(console_out_topic, 0, false, "Saving to EEPROM");
     } else {
       Serial.println(F("Unknown command"));
       mqttClient.publish(console_out_topic, 0, false, "Unknown command");
