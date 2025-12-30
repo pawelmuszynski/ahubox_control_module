@@ -12,11 +12,14 @@
 #include <EEPROM.h>
 #include <DallasTemperature.h>
 #include <Wire.h>
-#include <CRC8.h>
+#include <CRC8.h>  // CRC by Rob Tillaart
 #include "PID_v1.h"
 #include "PZEM004Tv30.h"
 
 #define CHECK_PULSE_THRESHOLD 300  // 107/s = ~ 0.8 m^3 / h
+
+#define WATER_PUMP_SWITCHOFF_DELAY 15  // 15 * 4s = 60s | switch off the water pump after 60s
+#define HEAT_PUMP_SWITCHON_DELAY 10  // 10 * 4s = 40s | switch on the heat pump after 40s
 
 // pins definition
 #define WATER_FLOW_PULSER_PIN 2  // INPUT
@@ -155,6 +158,14 @@ uint8_t beep_start_millis;
 
 uint8_t wire_cmd;
 
+uint8_t water_pump_switchoff_counter = WATER_PUMP_SWITCHOFF_DELAY;
+bool water_pump_switchoff_request = false;
+
+uint8_t heat_pump_switchon_counter = HEAT_PUMP_SWITCHON_DELAY;
+bool heat_pump_switchon_request = false;
+
+bool flow_check_enabled = false;
+
 void printPIDParams() {
   char buf[20];
   Serial.println(F("-= PID =-"));
@@ -213,24 +224,48 @@ void printAvailableDS() {
 }
 */
 
+void format_fixed100(char *buf, size_t size, int16_t v) {
+  const char *sign_str = "";
+  if (v < 0) {
+    sign_str = "-";
+    v = -v;
+  }
+  snprintf(buf, size, "%s%01u.%02u", sign_str, (uint8_t)(v / 100), (uint8_t)(v % 100));
+}
+
 void showValues() {
   char buf[30];
+  char val_buf[8];
+
   snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", energy_avg.voltage / 10, energy_avg.voltage % 10);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "Current: %01u.%03u A", energy_avg.current / 1000, energy_avg.current % 1000);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "Power: %01u.%01u W", energy_avg.power / 10, energy_avg.power % 10);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "PF: %01u.%02u", energy_avg.pf / 100, energy_avg.pf % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", temp_avg.heat / 100, temp_avg.heat % 100);
+
+
+  format_fixed100(val_buf, sizeof(val_buf), temp_avg.heat);
+  snprintf(buf, sizeof(buf), "heat_temp: %s °C", val_buf);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", temp_avg.ret / 100, temp_avg.ret % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), temp_avg.ret);
+  snprintf(buf, sizeof(buf), "return_temp: %s °C", val_buf);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", temp_avg.outside / 100, temp_avg.outside % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), temp_avg.outside);
+  snprintf(buf, sizeof(buf), "outside_temp: %s °C", val_buf);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", pid_data.sv / 100, pid_data.sv % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), pid_data.sv);
+  snprintf(buf, sizeof(buf), "pid_sv: %s °C", val_buf);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "set power: %d (%d%%)", pid_data.output, map(pid_data.output, 0, 255, 0, 100));
   Serial.println(buf);
 }
@@ -439,18 +474,18 @@ void processCommand(char *buf) {
 
 void setup() {
   Serial.begin(9600);
-  Serial.println(F("--== STARTING ==--"));
+  Serial.println(F("--== Initializing ==--"));
 
   digitalWrite(ALARM_SIGNAL_PIN, HIGH);
   pinMode(ALARM_SIGNAL_PIN, OUTPUT);
 
-  digitalWrite(WATER_PUMP_SWITCH_PIN, LOW);
+  digitalWrite(WATER_PUMP_SWITCH_PIN, HIGH);
   pinMode(WATER_PUMP_SWITCH_PIN, OUTPUT);
 
   pinMode(WATER_FLOW_PULSER_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(WATER_FLOW_PULSER_PIN), onPulse, FALLING);
 
-  digitalWrite(HEAT_ON_SWITCH_PIN, LOW);
+  digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
   pinMode(HEAT_ON_SWITCH_PIN, OUTPUT);
   pinMode(SV_PWM_PIN, OUTPUT);
 
@@ -515,7 +550,8 @@ void setup() {
 
   timer_start_millis = millis()/1000;
 
-  Serial.println(F("--== STARTED ==-"));
+  Serial.println(F("--== Initialized ==--"));
+  switchOn();
 }
 
 void loop() {
@@ -543,7 +579,7 @@ void loop() {
   if((uint8_t)((uint8_t)(millis()/1000) - timer_start_millis) >= 4) {
     timer_start_millis = millis()/1000;
     on4Sec();
-    flowAlarmCheck();
+    if(flow_check_enabled) flowAlarmCheck();
     loop_counter--;
     if(!loop_counter) {
       loop_counter = 15;
@@ -610,6 +646,21 @@ void loop() {
     }
   }
   beep_last_state = beepOK || beepNOK;
+
+  if(!water_pump_switchoff_counter) {  // switching off after delay
+    Serial.println(F("Switching OFF water pump"));
+    digitalWrite(WATER_PUMP_SWITCH_PIN, HIGH);
+    water_pump_switchoff_request = false;  // reset request flag
+    water_pump_switchoff_counter = WATER_PUMP_SWITCHOFF_DELAY;
+  }
+
+  if(!heat_pump_switchon_counter) {  // switching on after delay
+    Serial.println(F("Switching ON heat pump"));
+    flow_check_enabled = true;
+    digitalWrite(HEAT_ON_SWITCH_PIN, LOW);
+    heat_pump_switchon_request = false;  // reset request flag
+    heat_pump_switchon_counter = HEAT_PUMP_SWITCHON_DELAY;
+  }
 }
 
 void onPulse() {
@@ -661,6 +712,18 @@ void on4Sec() {
   static uint8_t i = 0;
   getSensorProbeValues(i);
 
+  if(water_pump_switchoff_request && water_pump_switchoff_counter) {
+    water_pump_switchoff_counter--;
+    Serial.print(F("Switch WP off counting: "));
+    Serial.println(water_pump_switchoff_counter);
+  }
+
+  if(heat_pump_switchon_request && heat_pump_switchon_counter) {
+    heat_pump_switchon_counter--;
+    Serial.print(F("Switch HP on counting: "));
+    Serial.println(heat_pump_switchon_counter);
+  }
+
   /*
   char heat[10], ret[10], outside[10], buf[50];
   itoa(temp_probes[i].heat, heat, 10);
@@ -692,7 +755,7 @@ void flowAlarmCheck() {
     Serial.print(pulse_counter);
     Serial.print(F(" is below "));
     Serial.println(CHECK_PULSE_THRESHOLD);
-    Serial.println(F("rise ALARM!"));
+    Serial.println(F("raise ALARM!"));
   }
   pulse_counter = 0;
 }
@@ -802,7 +865,7 @@ void onWireReceive(int bytes) {
     // ========== TEMPORARY CODE ===========
     case 0x30:
       Serial.println(F("switching off water flow pump"));
-      digitalWrite(WATER_PUMP_SWITCH_PIN, HIGH);
+      water_pump_switchoff_request = true;
       break;
     case 0x31:
       Serial.println(F("switching on water flow pump"));
@@ -810,12 +873,12 @@ void onWireReceive(int bytes) {
       break;
     case 0x40:
       Serial.println(F("switching off heat pump"));
-      digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
+      switchOff();
       break;
     case 0x41:
       Serial.println(F("switching on heat pump"));
       alarm_flag = false;
-      digitalWrite(HEAT_ON_SWITCH_PIN, LOW);
+      switchOn();
       break;
     // =====================================
     
@@ -907,11 +970,24 @@ void programOutsideDS() {
 
 void onAlarm() {
   if(!digitalRead(HEAT_ON_SWITCH_PIN)) {
-    digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
+    switchOff();
     Serial.println(F("ALARM! Switching off"));
   }
   if(!digitalRead(ALARM_SIGNAL_PIN)) {
     digitalWrite(ALARM_SIGNAL_PIN, LOW);
     Serial.println(F("ALARM! Setting alarm signal"));
   }
+}
+
+void switchOn() {
+  Serial.println(F("Starting heat pump switching ON procedure."));
+  digitalWrite(WATER_PUMP_SWITCH_PIN, LOW);
+  heat_pump_switchon_request = true;
+}
+
+void switchOff() {
+  Serial.println(F("Starting heat pump switching OFF procedure."));
+  digitalWrite(HEAT_ON_SWITCH_PIN, HIGH);
+  flow_check_enabled = false;
+  water_pump_switchoff_request = true;
 }

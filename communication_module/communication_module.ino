@@ -1,7 +1,7 @@
 #include <Wire.h>
 #include <ENC28J60lwIP.h>
-#include <CRC8.h>
-#include <AsyncMqtt_Generic.h> // by Mavin Roger, Khoi Hoang
+#include <CRC8.h>  // CRC by Rob Tillaart
+#include <AsyncMqtt_Generic.h>  // by Mavin Roger, Khoi Hoang
 #include <EEPROM.h>
 
 //#define DEV
@@ -283,6 +283,15 @@ void on10sec() {
 }
 */
 
+void format_fixed100(char *buf, size_t size, int16_t v) {
+  const char *sign_str = "";
+  if (v < 0) {
+    sign_str = "-";
+    v = -v;
+  }
+  snprintf(buf, size, "%s%01u.%02u", sign_str, (uint8_t) (v / 100), (uint8_t) (v % 100));
+}
+
 void on60sec() {
   Serial.println(F("\n---------------------"));
   Serial.println(F("Get Domoticz Data"));
@@ -337,14 +346,14 @@ void on60sec() {
   snprintf(buf, sizeof(buf), "%01hu.%02hu", (uint16_t)(ed.pf / 100), (uint16_t)(ed.pf % 100));
   updateDomoticz(DOMOTICZ_PF_IDX, buf);
 
-  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.heat / 100), (int16_t)(td.heat % 100));
+  format_fixed100(buf, sizeof(buf), td.heat);
   updateDomoticz(DOMOTICZ_HEAT_IDX, buf);
-  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.ret / 100), (int16_t)(td.ret % 100));
+  format_fixed100(buf, sizeof(buf), td.ret);
   updateDomoticz(DOMOTICZ_RETURN_IDX, buf);
-  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(td.outside / 100), (int16_t)(td.outside % 100));
+  format_fixed100(buf, sizeof(buf), td.outside);
   updateDomoticz(DOMOTICZ_OUTSIDE_IDX, buf);
 
-  snprintf(buf, sizeof(buf), "%01hd.%02hd", (int16_t)(pd.sv / 100), (int16_t)(pd.sv % 100));
+  format_fixed100(buf, sizeof(buf), pd.sv);
   updateDomoticz(DOMOTICZ_SV_IDX, buf);
   ultoa(map(pd.output, 0, 255, 0, 100), buf, 10);
   updateDomoticz(DOMOTICZ_OUTPUT_IDX, buf);
@@ -380,22 +389,36 @@ void checkEthernetConnection() {
 
 void showValues(const TempData *td, const EnergyData *ed, const PidData *pd) {
   char buf[30];
+  char val_buf[8];
+
   snprintf(buf, sizeof(buf), "Voltage: %01u.%01u V", ed->voltage / 10, ed->voltage % 10);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "Current: %01u.%03u A", ed->current / 1000, ed->current % 1000);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "Power: %01u.%01u W", ed->power / 10, ed->power % 10);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "PF: %01u.%02u", ed->pf / 100, ed->pf % 100);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "heat_temp: %01d.%02d °C", td->heat / 100, td->heat % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), td->heat);
+  snprintf(buf, sizeof(buf), "heat_temp: %s °C", val_buf);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "return_temp: %01d.%02d °C", td->ret / 100, td->ret % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), td->ret);
+  snprintf(buf, sizeof(buf), "return_temp: %s °C", val_buf);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "outside_temp: %01d.%02d °C", td->outside / 100, td->outside % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), td->outside);
+  snprintf(buf, sizeof(buf), "outside_temp: %s °C", val_buf);
   Serial.println(buf);
-  snprintf(buf, sizeof(buf), "pid_sv: %01d.%02d °C", pd->sv / 100, pd->sv % 100);
+
+  format_fixed100(val_buf, sizeof(val_buf), pd->sv);
+  snprintf(buf, sizeof(buf), "pid_sv: %s °C", val_buf);
   Serial.println(buf);
+
   snprintf(buf, sizeof(buf), "set power: %d (%d%%)", pd->output, map(pd->output, 0, 255, 0, 100));
   Serial.println(buf);
 }
